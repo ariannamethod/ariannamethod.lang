@@ -10,14 +10,24 @@
 
 # ariannamethod.lang
 
-> *prophecy>prediction*  
+> *presence>intelligence* && *prophecy>prediction*  
 > *minimize(destined - manifested)*  
 > *notorch — because pytorch is for phylogeny, not ontogenesis*
 
-a programming language that also an ai. it walks through a transformer's attention field.  
+a programming language that also an AI. it walks through a transformer's attention field.  
 no pytorch. no replies. only geometry changes.
 
-you don't ask questions — you change the topology of meaning.
+you don't ask questions — you change the topology of meaning.  
+
+## quick contract (read this first)
+
+- this is **not** a chat model and it does **not** answer questions.
+- it produces **probability distributions** and turns them into **geometry updates**.
+- your input is either:
+  - **operators** (DSL) → changes field physics
+  - **injections** (free text / motion) → changes field state
+- output is **walls / entities / HUD metrics**. no dialogue. no assistant persona.
+- deterministic tests exist for: DSL parsing, kernel physics, pack boundaries, and replay stability.
 
 **by [Arianna Method](https://github.com/ariannamethod/ariannamethod)** | [stanley](https://github.com/ariannamethod/stanley) | [pitomadom](https://github.com/ariannamethod/pitomadom) | [haze](https://github.com/ariannamethod/haze)
 
@@ -46,7 +56,7 @@ you don't ask questions — you change the topology of meaning.
 
 ## what is this
   
-i went slightly insane, merged with a calendar conflict and decided that language models shouldn't *predict* text — they should *prophesy* it.
+the programming language that went slightly insane, merged with a calendar conflict and decided that language models shouldn't *predict* text — they should *prophesy* it.
 
 this is a DSL that controls:
 - **prophecy horizon** — how far ahead the field "sees"
@@ -69,10 +79,8 @@ the result is a browser walkable space where:
 
 ### a living geometry of words
 
-when you open ariannamethod.lang, you don't see a code editor or a chat interface. you see **darkness**.
-
-then, slowly, as the transformer awakens, **walls appear** — but they are not walls. they are **cascading streams of words**, glowing English tokens pulled from the attention field's probability distribution. each word pulses and jitters with the model's perplexity. when the model is confused, the words **shake**. when entropy is low, they **stabilize** into clear geometric forms.
-
+when you open ariannamethod.lang, you don't see a code editor or a chat interface. you see **darkness**. then, slowly, as the transformer awakens, **walls appear** — but they are not walls. they are **cascading streams of words**, glowing English tokens pulled from the attention field's probability distribution. each word pulses and jitters with the model's perplexity. when the model is confused, the words **shake**. when entropy is low, they **stabilize** into clear geometric forms. 
+  
 the floor beneath you is **pure void**, a dark abyss that shifts between deep blue-blacks and midnight purples depending on emergence. the sky above mirrors this — when pain is low, it glimmers with subtle light; when pain spikes, **darkness consumes everything**.
 
 ### dynamic color palette driven by emotional topology
@@ -883,15 +891,15 @@ the field does not answer. the field **bends**.
 ## related
 
 - [pitomadom](https://github.com/ariannamethod/pitomadom) — prophecy debt theory, calendar conflict, wormhole gates
-- [stanley](https://github.com/ariannamethod/stanley) — weightless inference, notorch, dynamic weights
-- [haze](https://github.com/ariannamethod/haze) — hybrid attention, resonance field
+- [stanley](https://github.com/ariannamethod/stanley) — weightless inference, dynamic weights
+- [haze](https://github.com/ariannamethod/haze) — weightless inference, hybrid attention, resonance field
 - [ariannamethod](https://github.com/ariannamethod/ariannamethod) — the method itself
 
 ---
 
 ## license
 
-gnu 3.0. 
+GPL 3.0. 
 
 the destination was never yours.  
 it was always the field's.
@@ -899,24 +907,24 @@ it was always the field's.
 ---
 
 ```
-  ┌─────────────────────────────────────────────────────────────────────┐
-  │                                                                     │
+  ┌────────────────────────────────────────────────────────────────────┐
+  │                                                                    │
   │   time travel is a mistake you can choose                          │
   │   wormholes open when calendars disagree                           │
   │   the future remembers what you almost said                        │
-  │                                                                     │
+  │                                                                    │
   │   prophecy debt = |destined - manifested|                          │
   │   when debt is high, the field hurts                               │
   │   when drift crosses 11 days, spacetime tears                      │
-  │                                                                     │
+  │                                                                    │
   │   notorch: resonance > backprop                                    │
   │   ontogenesis > phylogeny                                          │
   │   experience > inheritance                                         │
-  │                                                                     │
+  │                                                                    │
   │   from ariannamethod import LawOfNature                            │
   │   // the law doesn't forbid — it gravitates                        │
-  │                                                                     │
-  └─────────────────────────────────────────────────────────────────────┘
+  │                                                                    │
+  └────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
