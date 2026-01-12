@@ -1,4 +1,4 @@
-// field.js — геометрия + prophecy/debt + calendar conflict + wormholes
+// field.js — geometry + prophecy/debt + calendar conflict + wormholes
 // "the world is a grid. tokens are manifested. model distribution is destined."
 // "debt accumulates as |destined - manifested| proxy"
 // calendar conflict: 354 (lunar) vs 365 (solar) = 11-day drift (from PITOMADOM)
