@@ -30,6 +30,30 @@ export class Field {
       debtDecay: 0.998,         // debt fades over time
       attractorDrift: 0.01,     // attractors shift
       emergenceThreshold: 0.6,  // when emergence spikes
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // CODES/RIC Integration (from Gemini 3 Pro analysis)
+      // Structured Resonance > Random Emergence
+      // ═══════════════════════════════════════════════════════════════════════
+      
+      // CHORDLOCK — prime number anchoring for "standing waves" of meaning
+      chordlockEnabled: true,
+      primeAnchors: [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47],
+      
+      // TEMPOLOCK — rhythmic movement gating
+      tempolockEnabled: false,  // disabled by default
+      tempo: 7,                 // prime-indexed beat interval (steps)
+      tempoPhase: 0,            // current phase in tempo cycle
+      
+      // CHIRALITY — rotational memory asymmetry
+      chiralityEnabled: true,
+      chiralMemory: 0,          // accumulated from left turns
+      chiralEmission: 0,        // accumulated from right turns
+      chiralDecay: 0.95,        // how fast chiral state fades
+      
+      // PAS — Phase Alignment Score for visual coherence
+      pasThreshold: 0.4,        // below this, world desynchronizes
+      glitchIntensity: 0,       // current visual desync level
     };
 
     // map: 1=solid wall, 0=empty
@@ -48,6 +72,10 @@ export class Field {
     // calendar tracking (PITOMADOM style)
     this.hebrewCycle = 354;     // lunar year in days
     this.gregorianCycle = 365;  // solar year in days
+    
+    // TEMPOLOCK state
+    this.tempoTick = 0;         // internal tempo counter
+    this.tempoBlocked = false;  // was last move blocked by tempo?
   }
 
   idx(x, y) { 
@@ -99,6 +127,138 @@ export class Field {
 
   queueJump(n) { 
     this.jumpQueue += (n | 0); 
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CODES/RIC: CHORDLOCK — Prime Number Anchoring
+  // "Standing waves of meaning" — resonance is stronger at prime coordinates
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  isPrimeAnchor(x, y) {
+    if (!this.cfg.chordlockEnabled) return false;
+    const primes = this.cfg.primeAnchors;
+    const xPrime = primes.includes(x % 48);
+    const yPrime = primes.includes(y % 48);
+    return xPrime || yPrime;
+  }
+
+  getChordlockResonance(x, y) {
+    if (!this.cfg.chordlockEnabled) return 1.0;
+    const primes = this.cfg.primeAnchors;
+    
+    // Count how many prime factors align
+    let score = 0;
+    for (const p of primes) {
+      if (x % p === 0) score += 1 / p;
+      if (y % p === 0) score += 1 / p;
+    }
+    
+    // Normalize to 1.0-2.0 range (resonance boost)
+    return 1.0 + Math.min(1.0, score);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CODES/RIC: TEMPOLOCK — Rhythmic Movement Gating
+  // "Movement only in prime-indexed beats"
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  tempoStep(dt) {
+    if (!this.cfg.tempolockEnabled) {
+      this.tempoBlocked = false;
+      return true; // always allow movement
+    }
+    
+    this.tempoTick += dt;
+    const beatDuration = this.cfg.tempo * 0.1; // tempo in deciseconds
+    
+    // Check if we're in a valid beat window
+    const phase = (this.tempoTick % beatDuration) / beatDuration;
+    const inBeat = phase < 0.3; // 30% of beat is "open window"
+    
+    this.tempoBlocked = !inBeat;
+    
+    if (this.tempoBlocked && this.metrics) {
+      // Trying to move outside beat increases tension
+      this.metrics.tension = Math.min(1, this.metrics.tension + 0.02);
+    }
+    
+    return inBeat;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CODES/RIC: CHIRALITY — Rotational Memory Asymmetry
+  // Left turn = accumulate context (Memory)
+  // Right turn = emit/release context (Emission)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  applyChirality(turnDirection, angle) {
+    if (!this.cfg.chiralityEnabled) return;
+    
+    const turnAmount = Math.abs(angle);
+    
+    if (turnDirection === 'left') {
+      // Left turn accumulates memory
+      this.cfg.chiralMemory += turnAmount * 0.1;
+      this.cfg.chiralMemory = Math.min(1, this.cfg.chiralMemory);
+      
+      // Boost resonance when accumulating
+      if (this.model) {
+        for (const id of this.ctx.slice(-3)) {
+          if (id >= 0 && id < this.model.vocabSize) {
+            this.model.resonance[id] = Math.min(1, this.model.resonance[id] + 0.005);
+          }
+        }
+      }
+    } else if (turnDirection === 'right') {
+      // Right turn emits/releases
+      this.cfg.chiralEmission += turnAmount * 0.1;
+      this.cfg.chiralEmission = Math.min(1, this.cfg.chiralEmission);
+      
+      // Emit creates slight chaos/novelty
+      if (this.metrics) {
+        this.metrics.entropy += this.cfg.chiralEmission * 0.02;
+      }
+    }
+    
+    // Decay both over time
+    this.cfg.chiralMemory *= this.cfg.chiralDecay;
+    this.cfg.chiralEmission *= this.cfg.chiralDecay;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CODES/RIC: PAS — Phase Alignment Score
+  // Visual coherence metric — low PAS = glitchy world
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  computePAS() {
+    if (!this.metrics) return 1.0;
+    
+    // PAS = f(resonance, 1-pain, 1-dissonance, chordlock bonus)
+    const resonance = this.metrics.resonanceField || 0.5;
+    const antiPain = 1 - (this.metrics.pain || 0);
+    const antiDissonance = 1 - (this.metrics.dissonance || 0);
+    const chordBonus = this.cfg.chordlockEnabled ? 0.1 : 0;
+    
+    const pas = (
+      0.35 * resonance +
+      0.25 * antiPain +
+      0.25 * antiDissonance +
+      0.15 * (1 - this.metrics.entropy / 3) +
+      chordBonus
+    );
+    
+    return clamp01(pas);
+  }
+
+  updateGlitchIntensity() {
+    const pas = this.computePAS();
+    const targetGlitch = pas < this.cfg.pasThreshold 
+      ? (this.cfg.pasThreshold - pas) * 2.5 
+      : 0;
+    
+    // Smooth transition
+    this.cfg.glitchIntensity = 0.9 * this.cfg.glitchIntensity + 0.1 * targetGlitch;
+    return this.cfg.glitchIntensity;
   }
 
   step(px, py, pa, dt) {

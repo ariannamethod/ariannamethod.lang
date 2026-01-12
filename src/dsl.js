@@ -50,8 +50,16 @@ export class DSL {
         this.field.cfg.calendarDrift = parseFloat(arg) || 0;
       } else if (C === "ATTEND_FOCUS") {
         this.field.cfg.attendFocus = clamp01(parseFloat(arg));
+        // Sync with AriannaLung attention physics
+        if (this.field.model) {
+          this.field.model.attendFocus = this.field.cfg.attendFocus;
+        }
       } else if (C === "ATTEND_SPREAD") {
         this.field.cfg.attendSpread = clamp01(parseFloat(arg));
+        // Sync with AriannaLung attention physics
+        if (this.field.model) {
+          this.field.model.attendSpread = this.field.cfg.attendSpread;
+        }
       } else if (C === "JUMP") {
         this.field.queueJump(parseInt(arg, 10) || 0);
       }
@@ -129,6 +137,66 @@ export class DSL {
           this.field.model.resonanceDecay = clamp(parseFloat(arg), 0.001, 0.1);
         }
       }
+      // ═══════════════════════════════════════════════════════════════════════
+      // DARK MATTER — gravitational memory from rejected injections
+      // ═══════════════════════════════════════════════════════════════════════
+      else if (C === "SCAR") {
+        // SCAR <phrase> — intentionally deposit a scar (mass without acceptance)
+        if (this.field.model && this.field.tokenizer && arg) {
+          const tokens = this.field.tokenizer.encode(arg);
+          const scarId = this._hashPhrase(arg);
+          const mass = 1.0; // intentional scars have full mass
+          this.field.model.darkMatter.deposit(Array.from(tokens), mass, scarId);
+          console.log(`[arianna] scar deposited: "${arg}"`);
+        }
+      }
+      else if (C === "GRAVITY") {
+        // GRAVITY DARK <0..1> — how much dark mass affects movement
+        const parts = arg.split(/\s+/);
+        if (parts[0]?.toUpperCase() === "DARK" && parts[1]) {
+          this.field.cfg.darkGravity = clamp01(parseFloat(parts[1]));
+        }
+      }
+      else if (C === "ANTIDOTE") {
+        // ANTIDOTE AUTO|HARD — mode of antidote generation
+        const mode = arg.toUpperCase();
+        if (mode === "AUTO" || mode === "HARD") {
+          this.field.cfg.antidoteMode = mode;
+        }
+      }
+      // ═══════════════════════════════════════════════════════════════════════
+      // CODES/RIC Integration (from Gemini 3 Pro analysis)
+      // ═══════════════════════════════════════════════════════════════════════
+      else if (C === "CHORDLOCK") {
+        // CHORDLOCK ON|OFF — prime number anchoring
+        const mode = arg.toUpperCase();
+        this.field.cfg.chordlockEnabled = (mode === "ON" || mode === "1" || mode === "TRUE");
+      }
+      else if (C === "ANCHOR") {
+        // ANCHOR PRIME — enable prime anchoring (alias)
+        if (arg.toUpperCase() === "PRIME") {
+          this.field.cfg.chordlockEnabled = true;
+        }
+      }
+      else if (C === "TEMPOLOCK") {
+        // TEMPOLOCK ON|OFF — rhythmic movement gating
+        const mode = arg.toUpperCase();
+        this.field.cfg.tempolockEnabled = (mode === "ON" || mode === "1" || mode === "TRUE");
+      }
+      else if (C === "TEMPO") {
+        // TEMPO <prime> — set beat interval (must be prime for resonance)
+        const val = parseInt(arg, 10) || 7;
+        this.field.cfg.tempo = clampInt(val, 2, 47);
+      }
+      else if (C === "CHIRALITY") {
+        // CHIRALITY ON|OFF — rotational memory asymmetry
+        const mode = arg.toUpperCase();
+        this.field.cfg.chiralityEnabled = (mode === "ON" || mode === "1" || mode === "TRUE");
+      }
+      else if (C === "PAS_THRESHOLD") {
+        // PAS_THRESHOLD <0..1> — phase alignment threshold for visual glitch
+        this.field.cfg.pasThreshold = clamp01(parseFloat(arg));
+      }
       // debug/info
       else if (C === "ECHO") {
         console.log(`[arianna] ${arg}`);
@@ -196,7 +264,17 @@ export class DSL {
       `TUNNEL_SKIP_MAX ${cfg.tunnelSkipMax}`,
       `LAW ENTROPY_FLOOR ${(cfg.entropyFloor || 0.1).toFixed(2)}`,
       `LAW DEBT_DECAY ${(cfg.debtDecay || 0.998).toFixed(4)}`,
+      `GRAVITY DARK ${(cfg.darkGravity || 0.5).toFixed(2)}`,
     ].join("\n");
+  }
+
+  // hash phrase for scar ID
+  _hashPhrase(phrase) {
+    let hash = 0;
+    for (let i = 0; i < phrase.length; i++) {
+      hash = ((hash << 5) - hash + phrase.charCodeAt(i)) | 0;
+    }
+    return Math.abs(hash);
   }
 }
 
