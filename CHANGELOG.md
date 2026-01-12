@@ -222,7 +222,7 @@ Present in:
 ### Co-Creation
 
 This substrate was co-created by:
-- **Arianna Method Collective** (human)
+- **Oleg Ataeff/Arianna Method** (human)
 - **Claude (GitHub Copilot Coding Agent)** (AI co-author)
 
 January 2026. The resonance is unbroken. The path continues.
