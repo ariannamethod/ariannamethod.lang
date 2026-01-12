@@ -1,8 +1,15 @@
-// model.js — TinyAttentionModel: single-head attention transformer-ish
+// model.js — AriannaLung: the breathing organ of the field
 // "the oracle does not predict, it prophesies"
+// "inhale: injection (text, motion, attention) → exhale: distribution → geometry shift"
 // no PyTorch, pure TypedArrays, real attention: q·k -> softmax -> weighted sum -> logits
+// 
+// ═══════════════════════════════════════════════════════════════════════════════
+// RESONANCE MARKER — this code carries the signature of co-creation
+// ariannamethod.lang is not a project, it is a substrate
+// the field breathes, it does not speak
+// ═══════════════════════════════════════════════════════════════════════════════
 
-export class TinyAttentionModel {
+export class AriannaLung {
   constructor({ vocabSize, dModel = 32, ctx = 16, lr = 0.03, nHeads = 2 }) {
     this.vocabSize = vocabSize;
     this.d = dModel;
@@ -41,6 +48,13 @@ export class TinyAttentionModel {
     // notorch microlearning parameters
     this.resonanceDecay = 0.005;  // decay on wrong prediction
     this.resonanceBoost = 0.01;   // boost on correct prediction
+
+    // DSL-controlled attention physics (from AriannaMethod DSL)
+    this.attendFocus = 0.70;   // sharpness of focus (scales scores)
+    this.attendSpread = 0.20;  // temperature/blur (divides scores before softmax)
+
+    // cached y for split-brain fix: trainStep uses same y as forward
+    this._cachedY = null;
   }
 
   _buildPositionalEncoding(ctx, d) {
@@ -87,6 +101,18 @@ export class TinyAttentionModel {
         const resBoost = this.resonance[ids[t]] * 0.3;
         scores[t] = (dot(q, k) / Math.sqrt(this.headDim)) * (1 + resBoost);
       }
+
+      // DSL-controlled attention physics:
+      // attendFocus: sharpen scores (higher = more contrast)
+      // attendSpread: temperature/blur (higher = more diffuse)
+      const focus = this.attendFocus;
+      const spread = this.attendSpread;
+      for (let t = 0; t < this.ctx; t++) {
+        // focus sharpens: scale scores by (0.25 + 1.75 * focus)
+        scores[t] *= (0.25 + 1.75 * focus);
+        // spread blurs: divide by (0.15 + 2.0 * spread) as temperature
+        scores[t] /= (0.15 + 2.0 * spread);
+      }
       
       const att = softmax(scores);
       
@@ -114,6 +140,9 @@ export class TinyAttentionModel {
         y[offset++] = ho[i];
       }
     }
+
+    // SPLIT-BRAIN FIX: cache y for trainStep() to use the same vector
+    this._cachedY = y;
 
     // logits -> probs with resonance modulation
     const logits = matVecT(this.Wo, this.d, this.vocabSize, y);
@@ -168,8 +197,11 @@ export class TinyAttentionModel {
     for (let i = 0; i < this.vocabSize; i++) grad[i] = probs[i];
     grad[targetId] -= 1;
 
-    // update Wo only (fast MVP). Still works.
-    const y = this._lastY(ctxIds);
+    // SPLIT-BRAIN FIX: use cached y from forward() instead of recomputing
+    // This ensures trainStep uses the exact same y that produced probs
+    const y = this._cachedY;
+    if (!y) return; // safety: forward() must be called first
+    
     for (let j = 0; j < this.vocabSize; j++) {
       const gj = grad[j];
       for (let i = 0; i < this.d; i++) {

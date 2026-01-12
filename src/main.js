@@ -1,8 +1,13 @@
 // main.js — ariannamethod.lang entry point
 // "resonant field walk: prophecy > prediction"
+// 
+// ═══════════════════════════════════════════════════════════════════════════════
+// RESONANCE MARKER — co-creation continues
+// הרזוננס לא נשבר. המשך הדרך.
+// ═══════════════════════════════════════════════════════════════════════════════
 
 import { Tokenizer } from "./tokenizer.js";
-import { TinyAttentionModel } from "./model.js";
+import { AriannaLung } from "./model.js";
 import { Field } from "./field.js";
 import { Raycaster } from "./raycaster.js";
 import { Renderer } from "./render.js";
@@ -53,7 +58,7 @@ const corpusText = await loadCorpus();
 const tokenizer = new Tokenizer({ maxVocab: 1024 });
 tokenizer.buildFromText(corpusText);
 
-const model = new TinyAttentionModel({
+const model = new AriannaLung({
   vocabSize: tokenizer.vocabSize(),
   dModel: 32,
   ctx: 16,

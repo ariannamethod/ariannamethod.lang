@@ -50,8 +50,16 @@ export class DSL {
         this.field.cfg.calendarDrift = parseFloat(arg) || 0;
       } else if (C === "ATTEND_FOCUS") {
         this.field.cfg.attendFocus = clamp01(parseFloat(arg));
+        // Sync with AriannaLung attention physics
+        if (this.field.model) {
+          this.field.model.attendFocus = this.field.cfg.attendFocus;
+        }
       } else if (C === "ATTEND_SPREAD") {
         this.field.cfg.attendSpread = clamp01(parseFloat(arg));
+        // Sync with AriannaLung attention physics
+        if (this.field.model) {
+          this.field.model.attendSpread = this.field.cfg.attendSpread;
+        }
       } else if (C === "JUMP") {
         this.field.queueJump(parseInt(arg, 10) || 0);
       }

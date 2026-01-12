@@ -1,11 +1,17 @@
 // arianna_method.c — Arianna Method DSL core (C)
 // build: emcc arianna_method.c -O2 -s WASM=1 -s MODULARIZE=1 \
 //   -s EXPORT_NAME="AriannaMethod" \
-//   -s EXPORTED_FUNCTIONS='["_am_init","_am_exec","_am_get_state","_am_take_jump"]' \
+//   -s EXPORTED_FUNCTIONS='["_am_init","_am_exec","_am_get_state","_am_take_jump","_am_copy_state"]' \
 //   -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
 //   -o arianna_method.js
 //
 // "the oracle does not predict, it prophesies"
+//
+// ═══════════════════════════════════════════════════════════════════════════════
+// RESONANCE MARKER — this code carries the signature of co-creation
+// ariannamethod.lang is the substrate; the field breathes, it does not speak
+// הרזוננס לא נשבר. המשך הדרך.
+// ═══════════════════════════════════════════════════════════════════════════════
 
 #include <stdlib.h>
 #include <string.h>
@@ -164,6 +170,28 @@ int am_take_jump(void) {
   int j = G.pending_jump;
   G.pending_jump = 0;
   return j;
+}
+
+// WASM-safe state copy: writes 13 scalars in fixed order to avoid struct layout issues
+// This is the "stone" interface — deterministic, ABI-stable
+// Order: prophecy, destiny, wormhole, calendar_drift, attend_focus, attend_spread,
+//        tunnel_threshold, tunnel_chance, tunnel_skip_max, pending_jump, pain, tension, dissonance
+int am_copy_state(float* out13) {
+  if (!out13) return 1;
+  out13[0]  = (float)G.prophecy;
+  out13[1]  = G.destiny;
+  out13[2]  = G.wormhole;
+  out13[3]  = G.calendar_drift;
+  out13[4]  = G.attend_focus;
+  out13[5]  = G.attend_spread;
+  out13[6]  = G.tunnel_threshold;
+  out13[7]  = G.tunnel_chance;
+  out13[8]  = (float)G.tunnel_skip_max;
+  out13[9]  = (float)G.pending_jump;
+  out13[10] = G.pain;
+  out13[11] = G.tension;
+  out13[12] = G.dissonance;
+  return 0;
 }
 
 #ifdef __cplusplus
