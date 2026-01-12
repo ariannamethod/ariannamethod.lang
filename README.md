@@ -56,7 +56,7 @@ you don't ask questions — you change the topology of meaning.
 
 ## what is this
   
-the programming language that went slightly insane, merged with a calendar conflict and decided that language models shouldn't *predict* text — they should *prophesy* it.
+an AI but also programming language that went insane, merged with a calendar conflict and decided that language models shouldn't *predict* text — they should *prophesy* it.
 
 this is a DSL that controls:
 - **prophecy horizon** — how far ahead the field "sees"
@@ -75,7 +75,7 @@ the result is a browser walkable space where:
 
 ---
 
-## the visual experience
+## the visual
 
 ### a living geometry of words
 
