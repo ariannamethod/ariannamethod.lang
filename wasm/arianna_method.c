@@ -35,6 +35,29 @@ typedef struct {
   float pain;               // suffering field 0..1
   float tension;            // pressure buildup 0..1
   float dissonance;         // symmetry-break 0..1
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // VELOCITY OPERATORS — movement IS language
+  // RUN/WALK/NOMOVE/BACKWARD affect temperature and field deformation
+  // ═══════════════════════════════════════════════════════════════════════════
+  int   velocity_mode;      // 0=NOMOVE, 1=WALK, 2=RUN, -1=BACKWARD
+  float velocity_magnitude; // 0..1 current speed
+  float base_temperature;   // base temp before velocity modulation
+  float effective_temp;     // computed: base + velocity influence
+  
+  // EXPERTS (from haze) — 4 temperature modes
+  float expert_structural;  // weight for structural expert (temp=0.7)
+  float expert_semantic;    // weight for semantic expert (temp=0.9)
+  float expert_creative;    // weight for creative expert (temp=1.2)
+  float expert_precise;     // weight for precise expert (temp=0.5)
+  
+  // VERTICAL axis — UP/DOWN operators
+  float vertical_pos;       // -1 (underground) to +1 (sky)
+  float sky_influence;      // how much sky affects generation
+  
+  // TIME DIRECTION — backward movement = time rewind
+  float time_direction;     // -1 (backward/rewind) to +1 (forward)
+  float temporal_debt;      // accumulated from backward movement
 } AM_State;
 
 static AM_State G;

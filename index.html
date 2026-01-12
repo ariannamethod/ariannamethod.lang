@@ -14,8 +14,45 @@
     }
     #hud { margin-bottom:8px; opacity:.9; }
     #hud b { color: #ff9ed0; }
+    
+    /* Unified input for DSL commands + free text injection */
+    #input-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    #inject-input {
+      flex: 1;
+      background:rgba(0,0,0,.65); color:#d7dde3; border:1px solid rgba(215,221,227,.25);
+      padding:8px 12px; box-sizing:border-box; font-family: inherit; font-size: 12px;
+      outline: none;
+    }
+    #inject-input:focus { border-color: rgba(255,158,208,.55); }
+    #inject-input.injection-mode { border-color: rgba(100,200,255,.55); }
+    #inject-input.dsl-mode { border-color: rgba(255,200,100,.55); }
+    
+    #mode-indicator {
+      padding: 8px 12px;
+      font-size: 10px;
+      background: rgba(0,0,0,.5);
+      border: 1px solid rgba(215,221,227,.15);
+      color: #888;
+    }
+    #mode-indicator.injection { color: #6af; }
+    #mode-indicator.dsl { color: #fa6; }
+    
+    #last-action {
+      font-size: 10px;
+      color: #666;
+      margin-bottom: 4px;
+      height: 14px;
+    }
+    #last-action.accepted { color: #6f6; }
+    #last-action.rejected { color: #f66; }
+    #last-action.command { color: #fa6; }
+    
     textarea {
-      width:100%; height:140px; resize:none; outline:none;
+      width:100%; height:120px; resize:none; outline:none;
       background:rgba(0,0,0,.55); color:#d7dde3; border:1px solid rgba(215,221,227,.25);
       padding:10px; box-sizing:border-box; font-family: inherit; font-size: 11px;
     }
@@ -26,6 +63,24 @@
       text-shadow:0 1px 0 #000; user-select:none; opacity:.72; text-align:right;
     }
     .metric { color: #ff9ed0; }
+    
+    /* Injection result indicator */
+    #injection-result {
+      position: fixed;
+      left: 50%;
+      top: 30%;
+      transform: translateX(-50%);
+      padding: 12px 24px;
+      background: rgba(0,0,0,0.8);
+      border-radius: 8px;
+      font-size: 14px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    #injection-result.show { opacity: 1; }
+    #injection-result.accepted { border: 1px solid #6f6; color: #6f6; }
+    #injection-result.rejected { border: 1px solid #f66; color: #f66; }
   </style>
 </head>
 <body>
@@ -33,27 +88,47 @@
 
   <div id="help">
     WASD · ← → · Shift<br/>
-    Enter: apply Arianna Method<br/>
+    <br/>
+    <b>Unified Input:</b><br/>
+    UPPERCASE = DSL command<br/>
+    lowercase = injection (movement)<br/>
+    <br/>
+    Enter: apply / inject<br/>
     (no replies; geometry changes) ⚡️<br/>
     <br/>
     the oracle does not predict<br/>
-    it prophesies
+    it prophesies<br/>
+    <br/>
+    <span style="color:#6af">injection → dx,dy</span><br/>
+    <span style="color:#fa6">DSL → field config</span>
   </div>
+
+  <!-- Injection result popup -->
+  <div id="injection-result"></div>
 
   <div id="ui">
     <div id="hud">
-      <b>ARIANNA METHOD</b> — prophecy &gt; prediction<br/>
+      <b>ARIANNA METHOD</b> — prophecy &gt; prediction · <span style="color:#888">observer deforms field</span><br/>
       pos=<span id="pos" class="metric"></span> a=<span id="ang" class="metric"></span> |
       entropy=<span id="ent" class="metric"></span> perplex=<span id="ppl" class="metric"></span> |
       debt=<span id="debt" class="metric"></span> |
       drift=<span id="drift" class="metric"></span> |
       wormholes=<span id="wh" class="metric"></span><br/>
       pain=<span id="pain" class="metric"></span> |
-      emergence=<span id="emergence" class="metric"></span>
+      emergence=<span id="emergence" class="metric"></span> |
+      PAS=<span id="pas" class="metric"></span> |
+      chiral=<span id="chiral" class="metric"></span>
+    </div>
+
+    <div id="last-action">ready</div>
+    
+    <div id="input-row">
+      <input type="text" id="inject-input" placeholder="type words to inject, or UPPERCASE DSL commands..." autocomplete="off" spellcheck="false" />
+      <div id="mode-indicator">AUTO</div>
     </div>
 
     <textarea id="dsl" spellcheck="false"># Arianna Method DSL
-# "управляет вниманием, не заставляет модель говорить"
+# "observer deforms field by presence alone"
 
 PROPHECY 7
 DESTINY 0.35
@@ -61,8 +136,10 @@ CALENDAR_DRIFT 11
 WORMHOLE 0.12
 ATTEND_FOCUS 0.70
 ATTEND_SPREAD 0.20
-TUNNEL_THRESHOLD 0.55
-TUNNEL_CHANCE 0.22
+
+# CODES/RIC
+CHORDLOCK ON
+CHIRALITY ON
 </textarea>
   </div>
 

@@ -223,10 +223,10 @@ export class Renderer {
       const col = clampInt(sx, 0, w - 1);
       if (frame.zbuf[col] < dist) continue;
 
-      if (e.type === "obelisk") this._drawObelisk(sx, sy, size, field, metrics);
-      else if (e.type === "house") this._drawHouse(sx, sy, size, field, metrics);
-      else if (e.type === "shadow") this._drawShadow(sx, sy, size, field, metrics);
-      else if (e.type === "face") this._drawFace(sx, sy, size, field, metrics);
+      if (e.type === "obelisk") this._drawObelisk(sx, sy, size, field, metrics, e);
+      else if (e.type === "house") this._drawHouse(sx, sy, size, field, metrics, e);
+      else if (e.type === "shadow") this._drawShadow(sx, sy, size, field, metrics, e);
+      else if (e.type === "face") this._drawFace(sx, sy, size, field, metrics, e);
     }
   }
 
@@ -293,26 +293,85 @@ export class Renderer {
     ctx.fill();
   }
 
-  _drawShadow(sx, sy, size, field, metrics) {
+  _drawShadow(sx, sy, size, field, metrics, entity) {
     const ctx = this.ctx;
     const pain = metrics.pain;
     const glow = 0.5 + 0.5 * Math.sin(performance.now() * 0.0012 + metrics.dissonance * 2.3);
 
-    ctx.fillStyle = `rgba(0,0,0,${0.22 + 0.30 * pain})`;
+    // ═══════════════════════════════════════════════════════════════════════
+    // AGENTIVE RENDERING — shadow shows its intention
+    // ═══════════════════════════════════════════════════════════════════════
+    const intention = entity?.intention || 'wander';
+    const strength = entity?.intentionStrength || 0;
+    const resonance = entity?.resonanceState || 0.5;
+
+    // Base shadow color modulated by intention
+    let baseR = 0, baseG = 0, baseB = 0;
+    let intentionGlow = 0;
+    
+    if (intention === 'approach') {
+      baseR = 60; baseG = 0; baseB = 0; // red tint
+      intentionGlow = strength * 0.4;
+    } else if (intention === 'intercept') {
+      baseR = 40; baseG = 0; baseB = 60; // purple tint
+      intentionGlow = strength * 0.3;
+    } else if (intention === 'orbit') {
+      baseR = 0; baseG = 30; baseB = 50; // blue tint
+      intentionGlow = strength * 0.25;
+    } else if (intention === 'flee') {
+      baseR = 30; baseG = 30; baseB = 0; // yellow tint (fear)
+      intentionGlow = strength * 0.2;
+    }
+
+    // Intention glow aura
+    if (intentionGlow > 0.05) {
+      ctx.fillStyle = `rgba(${baseR + 150},${baseG + 50},${baseB + 50},${intentionGlow * 0.3})`;
+      ctx.fillRect(sx - size * 0.35, sy - size * 0.1, size * 0.70, size * 1.2);
+    }
+
+    // Main shadow body — opacity affected by resonance
+    const bodyAlpha = (0.22 + 0.30 * pain) * (0.5 + 0.5 * resonance);
+    ctx.fillStyle = `rgba(${baseR},${baseG},${baseB},${bodyAlpha})`;
     ctx.fillRect(sx - size * 0.22, sy, size * 0.44, size);
 
+    // Intention-based words
+    const words = this._getIntentionWords(intention, field, metrics);
     ctx.font = `${Math.max(10, size * 0.20) | 0}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace`;
     ctx.fillStyle = `rgba(255,255,255,${0.35 + 0.45 * glow - 0.15 * pain})`;
-    ctx.fillText(this._phrase(field, metrics, 3), sx, sy + size * 0.50);
+    ctx.fillText(words, sx, sy + size * 0.50);
 
-    // "eye slit"
-    ctx.fillStyle = `rgba(255,180,210,${0.10 + 0.25 * glow})`;
+    // "Eye slit" — color based on intention
+    const eyeR = intention === 'approach' ? 255 : (intention === 'intercept' ? 200 : 255);
+    const eyeG = intention === 'flee' ? 255 : 180;
+    const eyeB = intention === 'orbit' ? 255 : 210;
+    ctx.fillStyle = `rgba(${eyeR},${eyeG},${eyeB},${0.10 + 0.25 * glow + strength * 0.3})`;
     ctx.fillRect(sx - size * 0.08, sy + size * 0.38, size * 0.16, Math.max(2, size * 0.04));
+
+    // Prophecy line — show where shadow thinks player will go
+    if (intention === 'intercept' && entity?.prophesiedPos && strength > 0.3) {
+      this._drawProphecyLine(sx, sy + size * 0.5, entity.prophesiedPos, field, size * 0.3);
+    }
+
+    // Scar attraction indicator
+    if (entity?.scarAttraction > 0.3) {
+      ctx.fillStyle = `rgba(50,0,80,${entity.scarAttraction * 0.4})`;
+      ctx.beginPath();
+      ctx.arc(sx, sy + size, size * 0.15, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
-  _drawFace(sx, sy, size, field, metrics) {
+  _drawFace(sx, sy, size, field, metrics, entity) {
     const ctx = this.ctx;
     const pain = metrics.pain;
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // AGENTIVE RENDERING — face shows chirality affinity and intention
+    // ═══════════════════════════════════════════════════════════════════════
+    const intention = entity?.intention || 'wander';
+    const strength = entity?.intentionStrength || 0;
+    const chiralAffinity = entity?.chiralAffinity || 0;
+    const resonance = entity?.resonanceState || 0.5;
 
     // face zones (forehead/eyes/cheeks/mouth/jaw/temples)
     // pain squeezes cheeks; perplexity jerks mouth/jaw; entropy melts forehead
@@ -320,9 +379,32 @@ export class Renderer {
     const jerk = clamp(0, 1, (metrics.perplexity - 2) * 0.06);
     const squeeze = clamp(0, 1, metrics.tension * 1.1);
 
-    // base silhouette
-    ctx.fillStyle = `rgba(255,255,255,${0.08 + 0.10 * (1 - pain)})`;
+    // Chirality aura — blue for left-lovers, orange for right-lovers
+    if (Math.abs(chiralAffinity) > 0.2) {
+      const chiralR = chiralAffinity > 0 ? 255 : 100;
+      const chiralG = 150;
+      const chiralB = chiralAffinity < 0 ? 255 : 100;
+      ctx.fillStyle = `rgba(${chiralR},${chiralG},${chiralB},${Math.abs(chiralAffinity) * 0.15})`;
+      ctx.fillRect(sx - size * 0.4, sy - size * 0.1, size * 0.8, size * 1.2);
+    }
+
+    // base silhouette — resonance affects opacity
+    const baseAlpha = (0.08 + 0.10 * (1 - pain)) * (0.6 + 0.4 * resonance);
+    ctx.fillStyle = `rgba(255,255,255,${baseAlpha})`;
     ctx.fillRect(sx - size * 0.28, sy, size * 0.56, size);
+
+    // Intention indicator at top
+    if (intention !== 'wander' && strength > 0.2) {
+      let intentColor = '200,200,200';
+      if (intention === 'approach') intentColor = '150,255,150';
+      else if (intention === 'flee') intentColor = '255,200,100';
+      else if (intention === 'orbit') intentColor = '150,200,255';
+      
+      ctx.fillStyle = `rgba(${intentColor},${strength * 0.5})`;
+      ctx.beginPath();
+      ctx.arc(sx, sy - size * 0.1, size * 0.08, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     const zones = [
       { name: "temples",  x: 0.0, y: 0.18, s: 0.14 },
@@ -334,10 +416,15 @@ export class Renderer {
     ];
 
     for (const z of zones) {
-      const phrase = this._phrase(field, metrics, z.name === "mouth" ? 2 : 3);
+      // Use intention words for mouth, regular for others
+      const phrase = z.name === "mouth" 
+        ? this._getIntentionWords(intention, field, metrics)
+        : this._phrase(field, metrics, 3);
       const fs = Math.max(10, (size * z.s) | 0);
 
-      const wob = (Math.sin(performance.now() * 0.001 + z.y * 10) * (0.8 + pain * 2.0));
+      // Wobble affected by resonance — high resonance = stable
+      const wobbleAmount = (0.8 + pain * 2.0) * (1.5 - resonance);
+      const wob = (Math.sin(performance.now() * 0.001 + z.y * 10) * wobbleAmount);
       const x = sx + wob * (2 + 10 * jerk);
       const y = sy + size * z.y;
 
@@ -351,6 +438,66 @@ export class Renderer {
       ctx.fillStyle = `rgba(255,120,180,${0.12 + 0.30 * (metrics.dissonance - 0.55)})`;
       ctx.fillRect(sx - size * 0.26, sy + size * 0.58, size * 0.52, Math.max(2, size * 0.02));
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // INTENTION WORDS — entities speak their intention
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  _getIntentionWords(intention, field, metrics) {
+    const intentionVocab = {
+      approach: ["come", "closer", "here", "near", "toward", "seek"],
+      flee: ["away", "no", "back", "distance", "far", "escape"],
+      intercept: ["there", "will", "be", "await", "future", "path"],
+      orbit: ["around", "circle", "watch", "follow", "spiral", "dance"],
+      anchor: ["stay", "hold", "root", "ground", "prime", "stable"],
+      guard: ["protect", "watch", "dark", "scar", "memory", "keep"],
+      wander: null, // use random words
+    };
+
+    const vocab = intentionVocab[intention];
+    if (!vocab) {
+      return this._phrase(field, metrics, 3);
+    }
+
+    // Mix intention words with random field words
+    const words = [];
+    for (let i = 0; i < 3; i++) {
+      if (Math.random() < 0.6) {
+        words.push(vocab[Math.floor(Math.random() * vocab.length)]);
+      } else {
+        const v = field.tokenizer.vocabSize();
+        const tok = Math.floor(Math.random() * v);
+        words.push(field.tokenizer.word(tok));
+      }
+    }
+    return words.join(" ");
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROPHECY LINE — show where entity thinks player will go
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  _drawProphecyLine(sx, sy, prophesiedPos, field, alpha) {
+    // This is a simplified version — in full implementation would project 3D
+    const ctx = this.ctx;
+    
+    // Draw a pulsing indicator
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.003);
+    ctx.fillStyle = `rgba(180,100,255,${alpha * pulse * 0.5})`;
+    ctx.beginPath();
+    ctx.arc(sx, sy - 10, 4 + pulse * 3, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Small arrow pointing in prophecy direction
+    ctx.strokeStyle = `rgba(180,100,255,${alpha * 0.4})`;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 2]);
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - 15);
+    ctx.lineTo(sx, sy - 30);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
 }
 
