@@ -35,6 +35,10 @@
 #define LORA_CLAMP(x,a,b) ((x)<(a)?(a):((x)>(b)?(b):(x)))
 #endif
 
+#ifndef LORA_MAX_TOPK
+#define LORA_MAX_TOPK 32
+#endif
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // LoRA Structure
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -351,8 +355,8 @@ void lora_build_dy_from_probs(
 
   // suppress top-K competitors
   int K = topk;
-  if (K > 32) K = 32; // sanity cap
-  int idx[32];
+  if (K > LORA_MAX_TOPK) K = LORA_MAX_TOPK; // sanity cap
+  int idx[LORA_MAX_TOPK];
   topk_excluding(probs, out_dim, target_id, K, idx);
 
   float each = (K > 0 ? (pull / (float)K) : pull);
