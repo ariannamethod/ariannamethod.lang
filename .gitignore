@@ -1,3 +1,7 @@
+# C test binaries
+tests/test_amk
+tests/test_lora
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
