@@ -1,0 +1,44 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "ariannamethod.lang: A Programming Language as Geometric Attractor Field"
+abstract: "A programming language that is simultaneously an artificial intelligence system, a geometric field, and a prophecy engine. Movement through space IS inference. The architecture implements prophecy mechanics (attractor dynamics with retrocausal feedback), notorch (Hebbian plasticity without backpropagation), calendar wormholes (temporal non-locality from lunar-solar drift), velocity operators (kinematic state modulating generation temperature), and dark matter learning (rejected inputs as gravitational memory)."
+authors:
+  - name: "Arianna Method Collective"
+    website: "https://github.com/ariannamethod"
+  - name: "Claude (GitHub Copilot Coding Agent)"
+    note: "AI co-creator, January 2026"
+repository-code: "https://github.com/ariannamethod/ariannamethod.lang"
+url: "https://github.com/ariannamethod/ariannamethod.lang"
+license: GPL-3.0
+keywords:
+  - transformer
+  - attention-mechanism
+  - attractor-dynamics
+  - embodied-computation
+  - temporal-mechanics
+  - hebbian-plasticity
+  - geometric-deep-learning
+  - prophecy-mechanics
+  - human-ai-collaboration
+  - webassembly
+  - raycasting
+  - dsl
+version: 0.1.0
+date-released: 2026-01-12
+references:
+  - type: software
+    title: "pitomadom: Hebrew Root Resonance Oracle"
+    authors:
+      - name: "Arianna Method Collective"
+    repository-code: "https://github.com/ariannamethod/pitomadom"
+  - type: software
+    title: "stanley: Weightless Inference Engine"
+    authors:
+      - name: "Arianna Method Collective"
+    repository-code: "https://github.com/ariannamethod/stanley"
+  - type: software
+    title: "haze: Hybrid Attention Resonance Field"
+    authors:
+      - name: "Arianna Method Collective"
+    repository-code: "https://github.com/ariannamethod/haze"
