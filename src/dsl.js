@@ -1,22 +1,63 @@
-// dsl.js — Arianna Method DSL (JavaScript version)
-// "управляет вниманием/пророческим горизонтом/червоточинами/календарным диссонансом"
-// the DSL doesn't make the model speak — it changes geometry
+// dsl.js — Arianna Method DSL (JavaScript bridge)
+// THE KERNEL: movement IS language
+// PACKS: ritual overlays, explicitly enabled
+//
+// This mirrors the AMK kernel in arianna_method.c
+// The C kernel is the source of truth; JS syncs with field state
+//
+// ═══════════════════════════════════════════════════════════════════════════════
+// ARCHITECTURE:
+//   AMK Kernel (bricks)     → prophecy, destiny, velocity, suffering, resets
+//   CODES/RIC Pack (spells) → chordlock, tempolock, chirality, tempo
+//   DarkMatter Pack         → scars, gravity, antidotes
+//   notorch Pack            → microlearning, resonance boost
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Pack flags (must match arianna_method.c)
+export const AM_PACK_CODES_RIC  = 0x01;
+export const AM_PACK_DARKMATTER = 0x02;
+export const AM_PACK_NOTORCH    = 0x04;
 
 export class DSL {
   constructor(field) {
     this.field = field;
     this.history = [];
     this.macros = new Map();
+    this.packsEnabled = 0;  // mirrors C kernel state
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PACK MANAGEMENT
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  enablePack(packMask) {
+    this.packsEnabled |= packMask;
+  }
+
+  disablePack(packMask) {
+    this.packsEnabled &= ~packMask;
+  }
+
+  packEnabled(packMask) {
+    return (this.packsEnabled & packMask) !== 0;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MAIN APPLY — parse and execute DSL script
+  // ═══════════════════════════════════════════════════════════════════════════
 
   apply(script) {
     const lines = String(script).split("\n");
-    
+
     for (let raw of lines) {
       let line = raw.trim();
       if (!line || line.startsWith("#")) continue;
-      
-      // macro expansion
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // MACRO SYSTEM
+      // ─────────────────────────────────────────────────────────────────────────
+
+      // macro expansion: @macroname
       if (line.startsWith("@")) {
         const macroName = line.slice(1).split(/\s+/)[0];
         const macroScript = this.macros.get(macroName);
@@ -25,7 +66,7 @@ export class DSL {
         }
         continue;
       }
-      
+
       // macro definition: MACRO name { ... }
       if (line.toUpperCase().startsWith("MACRO ")) {
         const match = line.match(/MACRO\s+(\w+)\s*\{([\s\S]*?)\}/i);
@@ -34,65 +75,55 @@ export class DSL {
         }
         continue;
       }
-      
+
       const [cmd, ...rest] = line.split(/\s+/);
       const arg = rest.join(" ").trim();
       const C = cmd.toUpperCase();
 
-      // core DSL commands
+      // ─────────────────────────────────────────────────────────────────────────
+      // AMK KERNEL COMMANDS — the bricks
+      // ─────────────────────────────────────────────────────────────────────────
+
+      // PROPHECY PHYSICS
       if (C === "PROPHECY") {
         this.field.cfg.prophecy = clampInt(parseInt(arg, 10), 1, 64);
-      } else if (C === "DESTINY") {
+      }
+      else if (C === "DESTINY") {
         this.field.cfg.destiny = clamp01(parseFloat(arg));
-      } else if (C === "WORMHOLE") {
+      }
+      else if (C === "WORMHOLE") {
         this.field.cfg.wormhole = clamp01(parseFloat(arg));
-      } else if (C === "CALENDAR_DRIFT") {
-        this.field.cfg.calendarDrift = parseFloat(arg) || 0;
-      } else if (C === "ATTEND_FOCUS") {
+      }
+      else if (C === "CALENDAR_DRIFT") {
+        this.field.cfg.calendarDrift = clamp(parseFloat(arg) || 0, 0, 30);
+      }
+
+      // ATTENTION PHYSICS
+      else if (C === "ATTEND_FOCUS") {
         this.field.cfg.attendFocus = clamp01(parseFloat(arg));
-        // Sync with AriannaLung attention physics
         if (this.field.model) {
           this.field.model.attendFocus = this.field.cfg.attendFocus;
         }
-      } else if (C === "ATTEND_SPREAD") {
+      }
+      else if (C === "ATTEND_SPREAD") {
         this.field.cfg.attendSpread = clamp01(parseFloat(arg));
-        // Sync with AriannaLung attention physics
         if (this.field.model) {
           this.field.model.attendSpread = this.field.cfg.attendSpread;
         }
-      } else if (C === "JUMP") {
-        this.field.queueJump(parseInt(arg, 10) || 0);
       }
-      // extended DSL (from Stanley/pitomadom)
+
+      // TUNNELING
       else if (C === "TUNNEL_THRESHOLD") {
         this.field.cfg.tunnelThreshold = clamp01(parseFloat(arg));
-      } else if (C === "TUNNEL_CHANCE") {
+      }
+      else if (C === "TUNNEL_CHANCE") {
         this.field.cfg.tunnelChance = clamp01(parseFloat(arg));
-      } else if (C === "TUNNEL_SKIP_MAX") {
+      }
+      else if (C === "TUNNEL_SKIP_MAX") {
         this.field.cfg.tunnelSkipMax = clampInt(parseInt(arg, 10), 1, 24);
       }
-      // presence pulse control
-      else if (C === "PRESENCE_DECAY") {
-        if (this.field.model) {
-          this.field.model.presenceDecay = clamp(parseFloat(arg), 0.5, 0.999);
-        }
-      }
-      // resonance manipulation
-      else if (C === "RESONANCE_BOOST") {
-        // format: RESONANCE_BOOST <word> <amount>
-        const parts = arg.split(/\s+/);
-        if (parts.length >= 2 && this.field.tokenizer && this.field.model) {
-          const word = parts[0].toLowerCase();
-          const amount = parseFloat(parts[1]) || 0.1;
-          const id = this.field.tokenizer.word2id.get(word);
-          if (id !== undefined) {
-            this.field.model.resonance[id] = clamp(
-              this.field.model.resonance[id] + amount, 0.1, 1
-            );
-          }
-        }
-      }
-      // pain/suffering modulation (direct injection)
+
+      // SUFFERING
       else if (C === "PAIN") {
         if (this.field.metrics) {
           this.field.metrics.pain = clamp01(parseFloat(arg));
@@ -108,16 +139,38 @@ export class DSL {
           this.field.metrics.dissonance = clamp01(parseFloat(arg));
         }
       }
-      // reset commands
-      else if (C === "RESET_DEBT") {
-        if (this.field.metrics) {
-          this.field.metrics.debt = 0;
-        }
+
+      // MOVEMENT
+      else if (C === "JUMP") {
+        this.field.queueJump(parseInt(arg, 10) || 0);
       }
+      else if (C === "VELOCITY") {
+        const mode = arg.toUpperCase();
+        if (mode === "RUN") this.field.cfg.velocityMode = 2;
+        else if (mode === "WALK") this.field.cfg.velocityMode = 1;
+        else if (mode === "NOMOVE") this.field.cfg.velocityMode = 0;
+        else if (mode === "BACKWARD") this.field.cfg.velocityMode = -1;
+        else this.field.cfg.velocityMode = clampInt(parseInt(arg, 10), -1, 2);
+
+        this._updateEffectiveTemp();
+      }
+      else if (C === "BASE_TEMP") {
+        this.field.cfg.baseTemperature = clamp(parseFloat(arg), 0.1, 3.0);
+        this._updateEffectiveTemp();
+      }
+
+      // RESETS
       else if (C === "RESET_FIELD") {
         this.field.resetManifested();
       }
-      // LAW OF NATURE commands
+      else if (C === "RESET_DEBT") {
+        if (this.field.metrics) {
+          this.field.metrics.debt = 0;
+          this.field.metrics.temporalDebt = 0;
+        }
+      }
+
+      // LAWS OF NATURE
       else if (C === "LAW") {
         const parts = arg.split(/\s+/);
         if (parts.length >= 2) {
@@ -126,93 +179,203 @@ export class DSL {
           this._applyLaw(lawName, lawValue);
         }
       }
-      // NOTORCH microlearning commands
-      else if (C === "NOTORCH_LR") {
-        if (this.field.model) {
-          this.field.model.lr = clamp(parseFloat(arg), 0.001, 0.5);
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // PACK MANAGEMENT
+      // ─────────────────────────────────────────────────────────────────────────
+
+      else if (C === "MODE" || C === "IMPORT") {
+        const packName = arg.toUpperCase().replace("/", "_");
+        if (packName === "CODES_RIC" || packName === "CODES/RIC") {
+          this.enablePack(AM_PACK_CODES_RIC);
+        } else if (packName === "DARKMATTER" || packName === "DARK_MATTER") {
+          this.enablePack(AM_PACK_DARKMATTER);
+        } else if (packName === "NOTORCH") {
+          this.enablePack(AM_PACK_NOTORCH);
         }
       }
-      else if (C === "NOTORCH_DECAY") {
-        if (this.field.model) {
-          this.field.model.resonanceDecay = clamp(parseFloat(arg), 0.001, 0.1);
+      else if (C === "DISABLE") {
+        const packName = arg.toUpperCase().replace("/", "_");
+        if (packName === "CODES_RIC" || packName === "CODES/RIC") {
+          this.disablePack(AM_PACK_CODES_RIC);
+        } else if (packName === "DARKMATTER" || packName === "DARK_MATTER") {
+          this.disablePack(AM_PACK_DARKMATTER);
+        } else if (packName === "NOTORCH") {
+          this.disablePack(AM_PACK_NOTORCH);
         }
       }
-      // ═══════════════════════════════════════════════════════════════════════
-      // DARK MATTER — gravitational memory from rejected injections
-      // ═══════════════════════════════════════════════════════════════════════
-      else if (C === "SCAR") {
-        // SCAR <phrase> — intentionally deposit a scar (mass without acceptance)
-        if (this.field.model && this.field.tokenizer && arg) {
-          const tokens = this.field.tokenizer.encode(arg);
-          const scarId = this._hashPhrase(arg);
-          const mass = 1.0; // intentional scars have full mass
-          this.field.model.darkMatter.deposit(Array.from(tokens), mass, scarId);
-          console.log(`[arianna] scar deposited: "${arg}"`);
-        }
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // CODES/RIC PACK — namespaced commands (always work)
+      // ─────────────────────────────────────────────────────────────────────────
+
+      else if (C.startsWith("CODES.") || C.startsWith("RIC.")) {
+        // Auto-enable pack on namespaced use
+        this.enablePack(AM_PACK_CODES_RIC);
+        const subcmd = C.startsWith("CODES.") ? C.slice(6) : C.slice(4);
+        this._applyCodesRicCommand(subcmd, arg);
       }
-      else if (C === "GRAVITY") {
-        // GRAVITY DARK <0..1> — how much dark mass affects movement
-        const parts = arg.split(/\s+/);
-        if (parts[0]?.toUpperCase() === "DARK" && parts[1]) {
-          this.field.cfg.darkGravity = clamp01(parseFloat(parts[1]));
-        }
-      }
-      else if (C === "ANTIDOTE") {
-        // ANTIDOTE AUTO|HARD — mode of antidote generation
-        const mode = arg.toUpperCase();
-        if (mode === "AUTO" || mode === "HARD") {
-          this.field.cfg.antidoteMode = mode;
-        }
-      }
-      // ═══════════════════════════════════════════════════════════════════════
-      // CODES/RIC Integration (from Gemini 3 Pro analysis)
-      // ═══════════════════════════════════════════════════════════════════════
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // CODES/RIC PACK — unqualified commands (require pack enabled)
+      // ─────────────────────────────────────────────────────────────────────────
+
       else if (C === "CHORDLOCK") {
-        // CHORDLOCK ON|OFF — prime number anchoring
-        const mode = arg.toUpperCase();
-        this.field.cfg.chordlockEnabled = (mode === "ON" || mode === "1" || mode === "TRUE");
+        if (this.packEnabled(AM_PACK_CODES_RIC)) {
+          this._applyCodesRicCommand("CHORDLOCK", arg);
+        }
       }
       else if (C === "ANCHOR") {
-        // ANCHOR PRIME — enable prime anchoring (alias)
-        if (arg.toUpperCase() === "PRIME") {
-          this.field.cfg.chordlockEnabled = true;
+        if (this.packEnabled(AM_PACK_CODES_RIC)) {
+          if (arg.toUpperCase() === "PRIME") {
+            this.field.cfg.chordlockEnabled = true;
+          }
         }
       }
       else if (C === "TEMPOLOCK") {
-        // TEMPOLOCK ON|OFF — rhythmic movement gating
-        const mode = arg.toUpperCase();
-        this.field.cfg.tempolockEnabled = (mode === "ON" || mode === "1" || mode === "TRUE");
+        if (this.packEnabled(AM_PACK_CODES_RIC)) {
+          this._applyCodesRicCommand("TEMPOLOCK", arg);
+        }
       }
       else if (C === "TEMPO") {
-        // TEMPO <prime> — set beat interval (must be prime for resonance)
-        const val = parseInt(arg, 10) || 7;
-        this.field.cfg.tempo = clampInt(val, 2, 47);
+        if (this.packEnabled(AM_PACK_CODES_RIC)) {
+          this._applyCodesRicCommand("TEMPO", arg);
+        }
       }
       else if (C === "CHIRALITY") {
-        // CHIRALITY ON|OFF — rotational memory asymmetry
-        const mode = arg.toUpperCase();
-        this.field.cfg.chiralityEnabled = (mode === "ON" || mode === "1" || mode === "TRUE");
+        if (this.packEnabled(AM_PACK_CODES_RIC)) {
+          this._applyCodesRicCommand("CHIRALITY", arg);
+        }
       }
       else if (C === "PAS_THRESHOLD") {
-        // PAS_THRESHOLD <0..1> — phase alignment threshold for visual glitch
-        this.field.cfg.pasThreshold = clamp01(parseFloat(arg));
+        if (this.packEnabled(AM_PACK_CODES_RIC)) {
+          this._applyCodesRicCommand("PAS_THRESHOLD", arg);
+        }
       }
-      // debug/info
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // DARKMATTER PACK
+      // ─────────────────────────────────────────────────────────────────────────
+
+      else if (C === "SCAR") {
+        if (this.packEnabled(AM_PACK_DARKMATTER)) {
+          if (this.field.model && this.field.tokenizer && arg) {
+            const tokens = this.field.tokenizer.encode(arg);
+            const scarId = this._hashPhrase(arg);
+            const mass = 1.0;
+            this.field.model.darkMatter.deposit(Array.from(tokens), mass, scarId);
+            console.log(`[arianna] scar deposited: "${arg}"`);
+          }
+        }
+      }
+      else if (C === "GRAVITY") {
+        if (this.packEnabled(AM_PACK_DARKMATTER)) {
+          const parts = arg.split(/\s+/);
+          if (parts[0]?.toUpperCase() === "DARK" && parts[1]) {
+            this.field.cfg.darkGravity = clamp01(parseFloat(parts[1]));
+          }
+        }
+      }
+      else if (C === "ANTIDOTE") {
+        if (this.packEnabled(AM_PACK_DARKMATTER)) {
+          const mode = arg.toUpperCase();
+          if (mode === "AUTO" || mode === "HARD") {
+            this.field.cfg.antidoteMode = mode;
+          }
+        }
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // NOTORCH PACK — microlearning commands
+      // ─────────────────────────────────────────────────────────────────────────
+
+      else if (C === "PRESENCE_DECAY") {
+        if (this.packEnabled(AM_PACK_NOTORCH)) {
+          if (this.field.model) {
+            this.field.model.presenceDecay = clamp(parseFloat(arg), 0.5, 0.999);
+          }
+        }
+      }
+      else if (C === "RESONANCE_BOOST") {
+        if (this.packEnabled(AM_PACK_NOTORCH)) {
+          const parts = arg.split(/\s+/);
+          if (parts.length >= 2 && this.field.tokenizer && this.field.model) {
+            const word = parts[0].toLowerCase();
+            const amount = parseFloat(parts[1]) || 0.1;
+            const id = this.field.tokenizer.word2id.get(word);
+            if (id !== undefined) {
+              this.field.model.resonance[id] = clamp(
+                this.field.model.resonance[id] + amount, 0.1, 1
+              );
+            }
+          }
+        }
+      }
+      else if (C === "NOTORCH_LR") {
+        if (this.packEnabled(AM_PACK_NOTORCH)) {
+          if (this.field.model) {
+            this.field.model.lr = clamp(parseFloat(arg), 0.001, 0.5);
+          }
+        }
+      }
+      else if (C === "NOTORCH_DECAY") {
+        if (this.packEnabled(AM_PACK_NOTORCH)) {
+          if (this.field.model) {
+            this.field.model.resonanceDecay = clamp(parseFloat(arg), 0.001, 0.1);
+          }
+        }
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // UTILITY
+      // ─────────────────────────────────────────────────────────────────────────
+
       else if (C === "ECHO") {
         console.log(`[arianna] ${arg}`);
       }
-      // unknown lines are ignored on purpose (for vibe / future expansion)
+
+      // Unknown commands ignored (future-proof + vibe)
     }
-    
+
     this.history.push(script);
   }
 
-  // LAW OF NATURE: emergent constraints that shape the field
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CODES/RIC SUBCOMMAND HANDLER
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  _applyCodesRicCommand(subcmd, arg) {
+    const mode = arg.toUpperCase();
+    const isOn = (mode === "ON" || mode === "1" || mode === "TRUE");
+
+    switch (subcmd) {
+      case "CHORDLOCK":
+        this.field.cfg.chordlockEnabled = isOn;
+        break;
+      case "TEMPOLOCK":
+        this.field.cfg.tempolockEnabled = isOn;
+        break;
+      case "CHIRALITY":
+        this.field.cfg.chiralityEnabled = isOn;
+        break;
+      case "TEMPO":
+        this.field.cfg.tempo = clampInt(parseInt(arg, 10) || 7, 2, 47);
+        break;
+      case "PAS_THRESHOLD":
+        this.field.cfg.pasThreshold = clamp01(parseFloat(arg));
+        break;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LAW OF NATURE — emergent constraints
+  // ═══════════════════════════════════════════════════════════════════════════
+
   _applyLaw(name, value) {
     const cfg = this.field.cfg;
     const metrics = this.field.metrics;
     const model = this.field.model;
-    
+
     switch (name) {
       case "ENTROPY_FLOOR":
         cfg.entropyFloor = clamp(value, 0, 2);
@@ -241,7 +404,7 @@ export class DSL {
       case "PAIN_COMPOSITE":
         if (metrics) metrics.pain = clamp01(value);
         break;
-      case "EMERGENCE_DETECTOR":
+      case "EMERGENCE_THRESHOLD":
         cfg.emergenceThreshold = clamp01(value);
         break;
       default:
@@ -249,10 +412,48 @@ export class DSL {
     }
   }
 
-  // generate current state as DSL script
+  // ═══════════════════════════════════════════════════════════════════════════
+  // VELOCITY — update effective temperature
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  _updateEffectiveTemp() {
+    const cfg = this.field.cfg;
+    const base = cfg.baseTemperature || 1.0;
+
+    switch (cfg.velocityMode) {
+      case 0:  // NOMOVE
+        cfg.effectiveTemp = base * 0.5;
+        cfg.timeDirection = 1;
+        break;
+      case 1:  // WALK
+        cfg.effectiveTemp = base * 0.85;
+        cfg.timeDirection = 1;
+        break;
+      case 2:  // RUN
+        cfg.effectiveTemp = base * 1.2;
+        cfg.timeDirection = 1;
+        break;
+      case -1: // BACKWARD
+        cfg.effectiveTemp = base * 0.7;
+        cfg.timeDirection = -1;
+        if (this.field.metrics) {
+          this.field.metrics.temporalDebt = (this.field.metrics.temporalDebt || 0) + 0.01;
+        }
+        break;
+      default:
+        cfg.effectiveTemp = base;
+        cfg.timeDirection = 1;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SERIALIZATION — generate current state as DSL script
+  // ═══════════════════════════════════════════════════════════════════════════
+
   serialize() {
     const cfg = this.field.cfg;
-    return [
+    const lines = [
+      `# AMK Kernel State`,
       `PROPHECY ${cfg.prophecy}`,
       `DESTINY ${cfg.destiny.toFixed(2)}`,
       `WORMHOLE ${cfg.wormhole.toFixed(2)}`,
@@ -264,11 +465,35 @@ export class DSL {
       `TUNNEL_SKIP_MAX ${cfg.tunnelSkipMax}`,
       `LAW ENTROPY_FLOOR ${(cfg.entropyFloor || 0.1).toFixed(2)}`,
       `LAW DEBT_DECAY ${(cfg.debtDecay || 0.998).toFixed(4)}`,
-      `GRAVITY DARK ${(cfg.darkGravity || 0.5).toFixed(2)}`,
-    ].join("\n");
+    ];
+
+    // Add velocity state
+    const velNames = { 0: "NOMOVE", 1: "WALK", 2: "RUN", [-1]: "BACKWARD" };
+    lines.push(`VELOCITY ${velNames[cfg.velocityMode] || "WALK"}`);
+
+    // Add pack states if enabled
+    if (this.packEnabled(AM_PACK_CODES_RIC)) {
+      lines.push(`# CODES/RIC Pack`);
+      lines.push(`MODE CODES_RIC`);
+      if (cfg.chordlockEnabled) lines.push(`CHORDLOCK ON`);
+      if (cfg.tempolockEnabled) lines.push(`TEMPOLOCK ON`);
+      if (cfg.chiralityEnabled) lines.push(`CHIRALITY ON`);
+      lines.push(`TEMPO ${cfg.tempo || 7}`);
+    }
+
+    if (this.packEnabled(AM_PACK_DARKMATTER)) {
+      lines.push(`# DarkMatter Pack`);
+      lines.push(`MODE DARKMATTER`);
+      lines.push(`GRAVITY DARK ${(cfg.darkGravity || 0.5).toFixed(2)}`);
+    }
+
+    return lines.join("\n");
   }
 
-  // hash phrase for scar ID
+  // ═══════════════════════════════════════════════════════════════════════════
+  // UTILITIES
+  // ═══════════════════════════════════════════════════════════════════════════
+
   _hashPhrase(phrase) {
     let hash = 0;
     for (let i = 0; i < phrase.length; i++) {
@@ -278,17 +503,21 @@ export class DSL {
   }
 }
 
-function clamp01(x) { 
-  x = Number.isFinite(x) ? x : 0; 
-  return Math.max(0, Math.min(1, x)); 
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLAMP HELPERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function clamp01(x) {
+  x = Number.isFinite(x) ? x : 0;
+  return Math.max(0, Math.min(1, x));
 }
 
-function clamp(x, a, b) { 
-  x = Number.isFinite(x) ? x : a; 
-  return Math.max(a, Math.min(b, x)); 
+function clamp(x, a, b) {
+  x = Number.isFinite(x) ? x : a;
+  return Math.max(a, Math.min(b, x));
 }
 
-function clampInt(x, a, b) { 
-  x = Number.isFinite(x) ? x : a; 
-  return Math.max(a, Math.min(b, x | 0)); 
+function clampInt(x, a, b) {
+  x = Number.isFinite(x) ? x : a;
+  return Math.max(a, Math.min(b, x | 0));
 }

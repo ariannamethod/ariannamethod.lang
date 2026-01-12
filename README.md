@@ -346,6 +346,117 @@ open http://localhost:8080
 
 ---
 
+## AMK architecture — bricks vs spells
+
+> *"the kernel breathes even in silence; packs are ritual overlays"*
+
+ariannamethod.lang separates **AMK (Arianna Method Kernel)** from **extension packs**.
+
+### the kernel (bricks)
+
+the kernel is the stone. the brick. the breath.
+these commands work always, require no imports, define the field's physics:
+
+```bash
+# prophecy — the oracle's parameters
+PROPHECY 7              # horizon (1-64)
+DESTINY 0.35            # bias toward destiny (0-1)
+WORMHOLE 0.12           # spacetime skip probability (0-1)
+CALENDAR_DRIFT 11       # hebrew-gregorian conflict (0-30)
+
+# attention — where the field looks
+ATTEND_FOCUS 0.70       # sharpness (0-1)
+ATTEND_SPREAD 0.20      # blur/temperature (0-1)
+
+# tunneling — reasoning skip under dissonance
+TUNNEL_THRESHOLD 0.55   # gate (0-1)
+TUNNEL_CHANCE 0.22      # activation probability (0-1)
+TUNNEL_SKIP_MAX 7       # max compressed steps (1-24)
+
+# suffering — the field's emotional state
+PAIN 0.5                # composite suffering (0-1)
+TENSION 0.3             # pressure buildup (0-1)
+DISSONANCE 0.6          # symmetry-break (0-1)
+
+# movement — the body in the field
+JUMP +5                 # queue spacetime jump
+VELOCITY RUN            # RUN|WALK|NOMOVE|BACKWARD
+BASE_TEMP 1.0           # base temperature (0.1-3.0)
+
+# resets
+RESET_FIELD             # clear manifested state
+RESET_DEBT              # clear prophecy debt
+
+# laws of nature
+LAW ENTROPY_FLOOR 0.1
+LAW DEBT_DECAY 0.998
+```
+
+### extension packs (spells)
+
+packs are ritual overlays. they must be explicitly enabled.
+use `MODE` or `IMPORT` to activate, or use namespaced syntax:
+
+```bash
+# enable packs
+MODE CODES_RIC          # enable CODES/RIC pack
+MODE DARKMATTER         # enable dark matter pack
+MODE NOTORCH            # enable microlearning pack
+DISABLE CODES_RIC       # disable a pack
+
+# namespaced syntax (auto-enables pack)
+CODES.CHORDLOCK ON      # always works, auto-enables CODES_RIC
+RIC.TEMPOLOCK ON        # always works
+```
+
+#### CODES/RIC pack — structured resonance
+
+```bash
+MODE CODES_RIC          # required for unqualified commands
+
+CHORDLOCK ON            # prime number anchoring
+TEMPOLOCK ON            # rhythmic movement gating
+TEMPO 7                 # beat interval (2-47, primes resonate)
+CHIRALITY ON            # rotational asymmetry
+PAS_THRESHOLD 0.4       # phase alignment threshold
+ANCHOR PRIME            # alias for CHORDLOCK ON
+```
+
+#### DarkMatter pack — gravitational memory
+
+```bash
+MODE DARKMATTER         # required
+
+SCAR "rejected phrase"  # deposit gravitational scar
+GRAVITY DARK 0.7        # dark mass influence (0-1)
+ANTIDOTE AUTO           # antidote generation (AUTO|HARD)
+```
+
+#### notorch pack — microlearning
+
+```bash
+MODE NOTORCH            # required
+
+RESONANCE_BOOST word 0.2  # boost word's resonance
+PRESENCE_DECAY 0.98       # presence fade rate
+NOTORCH_LR 0.01           # learning rate
+NOTORCH_DECAY 0.005       # wrong prediction decay
+```
+
+### why the split?
+
+| kernel (bricks) | packs (spells) |
+|-----------------|----------------|
+| always available | explicitly enabled |
+| physics primitives | ritual overlays |
+| movement + state | structured patterns |
+| the breath | the chant |
+
+the kernel must run standalone. a session without packs is still a valid session.
+**unknown commands are ignored** — this is intentional (future-proof + vibe).
+
+---
+
 ## DSL commands
 
 ```bash
