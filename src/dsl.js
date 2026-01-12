@@ -164,6 +164,39 @@ export class DSL {
           this.field.cfg.antidoteMode = mode;
         }
       }
+      // ═══════════════════════════════════════════════════════════════════════
+      // CODES/RIC Integration (from Gemini 3 Pro analysis)
+      // ═══════════════════════════════════════════════════════════════════════
+      else if (C === "CHORDLOCK") {
+        // CHORDLOCK ON|OFF — prime number anchoring
+        const mode = arg.toUpperCase();
+        this.field.cfg.chordlockEnabled = (mode === "ON" || mode === "1" || mode === "TRUE");
+      }
+      else if (C === "ANCHOR") {
+        // ANCHOR PRIME — enable prime anchoring (alias)
+        if (arg.toUpperCase() === "PRIME") {
+          this.field.cfg.chordlockEnabled = true;
+        }
+      }
+      else if (C === "TEMPOLOCK") {
+        // TEMPOLOCK ON|OFF — rhythmic movement gating
+        const mode = arg.toUpperCase();
+        this.field.cfg.tempolockEnabled = (mode === "ON" || mode === "1" || mode === "TRUE");
+      }
+      else if (C === "TEMPO") {
+        // TEMPO <prime> — set beat interval (must be prime for resonance)
+        const val = parseInt(arg, 10) || 7;
+        this.field.cfg.tempo = clampInt(val, 2, 47);
+      }
+      else if (C === "CHIRALITY") {
+        // CHIRALITY ON|OFF — rotational memory asymmetry
+        const mode = arg.toUpperCase();
+        this.field.cfg.chiralityEnabled = (mode === "ON" || mode === "1" || mode === "TRUE");
+      }
+      else if (C === "PAS_THRESHOLD") {
+        // PAS_THRESHOLD <0..1> — phase alignment threshold for visual glitch
+        this.field.cfg.pasThreshold = clamp01(parseFloat(arg));
+      }
       // debug/info
       else if (C === "ECHO") {
         console.log(`[arianna] ${arg}`);

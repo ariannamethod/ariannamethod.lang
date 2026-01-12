@@ -116,16 +116,36 @@ function loop(now) {
   const dt = Math.min(0.033, (now - last) / 1000);
   last = now;
 
-  // movement
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CODES/RIC: TEMPOLOCK check — movement only allowed in "beat windows"
+  // ═══════════════════════════════════════════════════════════════════════════
+  const canMove = field.tempoStep(dt);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CODES/RIC: CHIRALITY — track rotation direction for memory/emission
+  // ═══════════════════════════════════════════════════════════════════════════
+  const prevAngle = p.a;
+  
+  // rotation
   const sprint = keys.has("shift") ? 1.65 : 1.0;
   if (keys.has("arrowleft")) p.a -= p.rot * dt;
   if (keys.has("arrowright")) p.a += p.rot * dt;
 
+  // Apply chirality based on turn direction
+  const angleDelta = p.a - prevAngle;
+  if (Math.abs(angleDelta) > 0.001) {
+    const turnDir = angleDelta < 0 ? 'left' : 'right';
+    field.applyChirality(turnDir, angleDelta);
+  }
+
+  // movement (gated by TEMPOLOCK)
   let vx = 0, vy = 0;
-  if (keys.has("w")) { vx += Math.cos(p.a); vy += Math.sin(p.a); }
-  if (keys.has("s")) { vx -= Math.cos(p.a); vy -= Math.sin(p.a); }
-  if (keys.has("a")) { vx += Math.cos(p.a - Math.PI/2); vy += Math.sin(p.a - Math.PI/2); }
-  if (keys.has("d")) { vx += Math.cos(p.a + Math.PI/2); vy += Math.sin(p.a + Math.PI/2); }
+  if (canMove) {
+    if (keys.has("w")) { vx += Math.cos(p.a); vy += Math.sin(p.a); }
+    if (keys.has("s")) { vx -= Math.cos(p.a); vy -= Math.sin(p.a); }
+    if (keys.has("a")) { vx += Math.cos(p.a - Math.PI/2); vy += Math.sin(p.a - Math.PI/2); }
+    if (keys.has("d")) { vx += Math.cos(p.a + Math.PI/2); vy += Math.sin(p.a + Math.PI/2); }
+  }
 
   const vlen = Math.hypot(vx, vy) || 1;
   vx /= vlen; vy /= vlen;
@@ -137,6 +157,11 @@ function loop(now) {
   // collision vs solid cells
   if (!field.isSolid(nx, p.y)) p.x = nx;
   if (!field.isSolid(p.x, ny)) p.y = ny;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CODES/RIC: Update PAS and glitch intensity
+  // ═══════════════════════════════════════════════════════════════════════════
+  field.updateGlitchIntensity();
 
   // field step: updates prophecy/entropy/debt, may trigger wormhole jumps
   const wh = field.step(p.x, p.y, p.a, dt);

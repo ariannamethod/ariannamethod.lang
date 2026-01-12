@@ -58,7 +58,14 @@ export class Renderer {
         ctx.font = `${size | 0}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace`;
 
         // jitter with perplexity and dissonance
-        const j = metrics.perplexity * 0.04 + metrics.dissonance * 0.18;
+        let j = metrics.perplexity * 0.04 + metrics.dissonance * 0.18;
+        
+        // CHORDLOCK: reduce jitter at prime-anchored positions (standing waves)
+        if (field.cfg.chordlockEnabled && r.cellX !== undefined && r.cellY !== undefined) {
+          const chordRes = field.getChordlockResonance(r.cellX, r.cellY);
+          j *= (2.0 - chordRes); // chordRes is 1.0-2.0, so this reduces jitter
+        }
+        
         const jx = Math.sin(x * 0.21 + performance.now() * 0.0012) * j * 10;
         const jy = Math.cos(x * 0.17 + performance.now() * 0.0014) * j * 10;
 
@@ -87,6 +94,104 @@ export class Renderer {
       ctx.fillStyle = `rgba(255,100,200,${0.05 + 0.08 * metrics.tunnelDepth})`;
       ctx.fillRect(0, 0, w, h);
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PAS GLITCH EFFECT (CODES/RIC: Phase Alignment Score)
+    // Low PAS = world desynchronizes (glitch instead of just darkening)
+    // ═══════════════════════════════════════════════════════════════════════
+    const glitch = field.cfg.glitchIntensity || 0;
+    if (glitch > 0.05) {
+      this._drawGlitchEffect(w, h, glitch);
+    }
+
+    // TEMPOLOCK indicator (when enabled)
+    if (field.cfg.tempolockEnabled) {
+      this._drawTempoIndicator(w, h, field);
+    }
+
+    // CHIRALITY indicator (subtle)
+    if (field.cfg.chiralityEnabled) {
+      const mem = field.cfg.chiralMemory || 0;
+      const emit = field.cfg.chiralEmission || 0;
+      if (mem > 0.1 || emit > 0.1) {
+        // Left side glow for memory
+        ctx.fillStyle = `rgba(100,150,255,${mem * 0.3})`;
+        ctx.fillRect(0, 0, 4, h);
+        // Right side glow for emission
+        ctx.fillStyle = `rgba(255,150,100,${emit * 0.3})`;
+        ctx.fillRect(w - 4, 0, 4, h);
+      }
+    }
+  }
+
+  _drawGlitchEffect(w, h, intensity) {
+    const ctx = this.ctx;
+    const time = performance.now();
+    
+    // Scanline distortion
+    const scanHeight = 2 + Math.floor(intensity * 8);
+    for (let i = 0; i < 5 * intensity; i++) {
+      const y = Math.floor(Math.random() * h);
+      const offset = (Math.sin(time * 0.01 + i) * intensity * 20) | 0;
+      
+      // Chromatic aberration simulation
+      ctx.fillStyle = `rgba(255,0,0,${0.1 * intensity})`;
+      ctx.fillRect(offset, y, w, scanHeight);
+      ctx.fillStyle = `rgba(0,255,255,${0.1 * intensity})`;
+      ctx.fillRect(-offset, y + 1, w, scanHeight);
+    }
+    
+    // Random block displacement
+    if (intensity > 0.3) {
+      const blocks = Math.floor(intensity * 5);
+      for (let i = 0; i < blocks; i++) {
+        const bx = Math.floor(Math.random() * w);
+        const by = Math.floor(Math.random() * h);
+        const bw = 10 + Math.floor(Math.random() * 30);
+        const bh = 5 + Math.floor(Math.random() * 15);
+        
+        ctx.fillStyle = `rgba(${Math.random() * 100 | 0},${Math.random() * 50 | 0},${Math.random() * 100 | 0},${0.3 * intensity})`;
+        ctx.fillRect(bx, by, bw, bh);
+      }
+    }
+    
+    // Static noise overlay
+    if (intensity > 0.5) {
+      const imageData = ctx.getImageData(0, 0, w, h);
+      const data = imageData.data;
+      const noiseAmount = intensity * 30;
+      
+      for (let i = 0; i < data.length; i += 16) { // Every 4th pixel for performance
+        const noise = (Math.random() - 0.5) * noiseAmount;
+        data[i] = Math.max(0, Math.min(255, data[i] + noise));
+        data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise));
+        data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise));
+      }
+      
+      ctx.putImageData(imageData, 0, 0);
+    }
+  }
+
+  _drawTempoIndicator(w, h, field) {
+    const ctx = this.ctx;
+    const tempo = field.cfg.tempo || 7;
+    const tick = field.tempoTick || 0;
+    const beatDuration = tempo * 0.1;
+    const phase = (tick % beatDuration) / beatDuration;
+    
+    // Beat pulse at bottom of screen
+    const pulseSize = phase < 0.3 ? 1 - (phase / 0.3) : 0;
+    const blocked = field.tempoBlocked;
+    
+    ctx.fillStyle = blocked 
+      ? `rgba(255,100,100,${0.3 + pulseSize * 0.4})`  // Red when blocked
+      : `rgba(100,255,150,${0.2 + pulseSize * 0.5})`; // Green when open
+    
+    ctx.fillRect(w / 2 - 30, h - 8, 60, 6);
+    
+    // Phase indicator
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.fillRect(w / 2 - 30 + phase * 60, h - 8, 2, 6);
   }
 
   _drawEntities(frame, p, field, metrics, entities) {
