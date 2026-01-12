@@ -1,4 +1,4 @@
-// arianna_method.c — Tiny Arianna Method DSL core (C)
+// arianna_method.c — Arianna Method DSL core (C)
 // build: emcc arianna_method.c -O2 -s WASM=1 -s MODULARIZE=1 \
 //   -s EXPORT_NAME="AriannaMethod" \
 //   -s EXPORTED_FUNCTIONS='["_am_init","_am_exec","_am_get_state","_am_take_jump"]' \
