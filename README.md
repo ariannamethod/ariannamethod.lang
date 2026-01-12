@@ -14,7 +14,7 @@
 > *minimize(destined - manifested)*  
 > *notorch — because pytorch is for phylogeny, not ontogenesis*
 
-a mini programming language that walks through a transformer's attention field.  
+a mini programming language that also an ai. it walks through a transformer's attention field.  
 no pytorch. no replies. only geometry changes.
 
 you don't ask questions — you change the topology of meaning.
@@ -45,7 +45,7 @@ you don't ask questions — you change the topology of meaning.
 
 ## what is this
 
-imagine if Karpathy went slightly insane, merged with a calendar conflict, and decided that language models shouldn't *predict* text — they should *prophesy* it.
+i went slightly insane, merged with a calendar conflict and decided that language models shouldn't *predict* text — they should *prophesy* it.
 
 this is a DSL that controls:
 - **prophecy horizon** — how far ahead the field "sees"
