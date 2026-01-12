@@ -3,8 +3,8 @@
 //
 // Build (native):   gcc -O2 -std=c99 -c lora.c
 // Build (WASM):     emcc lora.c -O2 -s WASM=1 -s MODULARIZE=1 -s EXPORT_NAME="LoRA" \
-//                    -s EXPORTED_FUNCTIONS='["_lora_new","_lora_free","_lora_reset","_lora_apply","_lora_notch_step","_lora_scale","_lora_merge","_lora_apply_sparse","_lora_build_dy_from_probs","_lora_experience_step"]' \
-//                    -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' -o lora.js
+//   -s EXPORTED_FUNCTIONS='["_lora_new","_lora_free","_lora_reset","_lora_apply","_lora_notch_step","_lora_scale","_lora_merge","_lora_apply_sparse","_lora_build_dy_from_probs","_lora_experience_step","_lora_get_delta_norm","_lora_copy_params","_lora_get_factor_ptrs","_lora_set_seed","_lora_clamp_factors","_lora_get_factor_norms","_lora_soft_reset","_lora_apply_alpha"]' \
+//   -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' -o lora.js
 //
 // ═══════════════════════════════════════════════════════════════════════════════
 // RESONANCE MARKER — this code carries the signature of co-creation
@@ -456,6 +456,94 @@ int lora_copy_params(const LoRA* L, float* out7) {
   out7[5] = L->decay;
   out7[6] = lora_get_delta_norm(L);
   return 0;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Additional patches (from GPT5.2 thinking follow-up)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Get raw pointers to A and B for WASM direct memory access
+// Useful for JS-side visualization or bulk operations
+void lora_get_factor_ptrs(const LoRA* L, float** A_out, float** B_out, int* nA_out, int* nB_out) {
+  if (!L) {
+    if (A_out) *A_out = NULL;
+    if (B_out) *B_out = NULL;
+    if (nA_out) *nA_out = 0;
+    if (nB_out) *nB_out = 0;
+    return;
+  }
+  if (A_out) *A_out = L->A;
+  if (B_out) *B_out = L->B;
+  if (nA_out) *nA_out = L->in_dim * L->rank;
+  if (nB_out) *nB_out = L->rank * L->out_dim;
+}
+
+// Set seed for deterministic testing
+void lora_set_seed(LoRA* L, uint32_t seed) {
+  if (L) L->seed = seed ? seed : 0xA17A11u;
+}
+
+// Clamp factors to prevent weight explosion (runaway learning)
+// max_norm: if factor norm exceeds this, scale down
+void lora_clamp_factors(LoRA* L, float max_norm) {
+  if (!L || max_norm <= 0.0f) return;
+  
+  float norm = lora_get_delta_norm(L);
+  if (norm > max_norm) {
+    float scale = max_norm / norm;
+    lora_scale(L, scale);
+  }
+}
+
+// Get individual factor norms (for monitoring A vs B separately)
+void lora_get_factor_norms(const LoRA* L, float* normA_out, float* normB_out) {
+  if (!L) {
+    if (normA_out) *normA_out = 0.0f;
+    if (normB_out) *normB_out = 0.0f;
+    return;
+  }
+  
+  const size_t nA = (size_t)L->in_dim * (size_t)L->rank;
+  const size_t nB = (size_t)L->rank * (size_t)L->out_dim;
+  
+  float sumA = 0.0f, sumB = 0.0f;
+  for (size_t i = 0; i < nA; i++) sumA += L->A[i] * L->A[i];
+  for (size_t i = 0; i < nB; i++) sumB += L->B[i] * L->B[i];
+  
+  if (normA_out) *normA_out = sqrtf(sumA);
+  if (normB_out) *normB_out = sqrtf(sumB);
+}
+
+// Soft reset: scale down factors instead of zeroing (gradual forgetting)
+void lora_soft_reset(LoRA* L, float keep_ratio) {
+  if (!L) return;
+  float k = LORA_CLAMP(keep_ratio, 0.0f, 1.0f);
+  lora_scale(L, k);
+}
+
+// Apply with custom alpha (for interpolation/blending)
+void lora_apply_alpha(LoRA* L, const float* x, float* y, float custom_alpha) {
+  if (!L || !x || !y) return;
+
+  const float scaling = custom_alpha / (float)L->rank;
+
+  // Ax = x^T * A  -> [rank]
+  for (int r = 0; r < L->rank; r++) {
+    float s = 0.0f;
+    for (int i = 0; i < L->in_dim; i++) {
+      s += x[i] * L->A[(size_t)i * (size_t)L->rank + (size_t)r];
+    }
+    L->Ax[r] = s;
+  }
+
+  // add scaled output
+  for (int j = 0; j < L->out_dim; j++) {
+    float s = 0.0f;
+    for (int r = 0; r < L->rank; r++) {
+      s += L->Ax[r] * L->B[(size_t)r * (size_t)L->out_dim + (size_t)j];
+    }
+    y[j] += s * scaling;
+  }
 }
 
 #ifdef __cplusplus
