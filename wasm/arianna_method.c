@@ -59,6 +59,16 @@ static float clampf(float x, float a, float b) {
   return x;
 }
 
+static int safe_atoi(const char* s) {
+  if (!s || !*s) return 0;
+  char* endptr;
+  long val = strtol(s, &endptr, 10);
+  // clamp to int range to prevent overflow
+  if (val > 2147483647L) return 2147483647;
+  if (val < -2147483647L) return -2147483647;
+  return (int)val;
+}
+
 static int clampi(int x, int a, int b) {
   if (x < a) return a;
   if (x > b) return b;
@@ -111,7 +121,7 @@ int am_exec(const char* script) {
     upcase(t);
 
     if (!strcmp(t, "PROPHECY")) {
-      G.prophecy = clampi(atoi(arg), 1, 64);
+      G.prophecy = clampi(safe_atoi(arg), 1, 64);
     } else if (!strcmp(t, "DESTINY")) {
       G.destiny = clamp01((float)atof(arg));
     } else if (!strcmp(t, "WORMHOLE")) {
@@ -127,9 +137,9 @@ int am_exec(const char* script) {
     } else if (!strcmp(t, "TUNNEL_CHANCE")) {
       G.tunnel_chance = clamp01((float)atof(arg));
     } else if (!strcmp(t, "TUNNEL_SKIP_MAX")) {
-      G.tunnel_skip_max = clampi(atoi(arg), 1, 24);
+      G.tunnel_skip_max = clampi(safe_atoi(arg), 1, 24);
     } else if (!strcmp(t, "JUMP")) {
-      G.pending_jump += atoi(arg);
+      G.pending_jump = clampi(G.pending_jump + safe_atoi(arg), -1000, 1000);
     } else if (!strcmp(t, "PAIN")) {
       G.pain = clamp01((float)atof(arg));
     } else if (!strcmp(t, "TENSION")) {

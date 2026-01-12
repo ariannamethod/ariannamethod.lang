@@ -17,13 +17,14 @@ export class TinyAttentionModel {
     this.Wo = randMat(dModel, vocabSize, 0.08);     // vector -> logits
 
     // Multi-head projections (trainable)
+    // Q: dModel -> headDim, K: dModel -> headDim, V: dModel -> headDim
     this.Wq = [];
     this.Wk = [];
     this.Wv = [];
     for (let h = 0; h < nHeads; h++) {
-      this.Wq.push(randMat(dModel, this.headDim, 0.08));
-      this.Wk.push(randMat(dModel, this.headDim, 0.08));
-      this.Wv.push(randMat(this.headDim, dModel / nHeads, 0.08));
+      this.Wq.push(randMat(this.headDim, dModel, 0.08));
+      this.Wk.push(randMat(this.headDim, dModel, 0.08));
+      this.Wv.push(randMat(this.headDim, dModel, 0.08));
     }
 
     // Emergent: resonance weights (like Stanley's field weights)
@@ -68,14 +69,14 @@ export class TinyAttentionModel {
     for (let h = 0; h < this.nHeads; h++) {
       // last token as query seed
       const xLast = X.subarray((this.ctx - 1) * this.d, this.ctx * this.d);
-      const q = matVec(this.Wq[h], this.d, this.headDim, xLast);
+      const q = matVec(this.Wq[h], this.headDim, this.d, xLast);
       
       const scores = new Float32Array(this.ctx);
 
       // attention scores vs all keys (with causal mask implied by focus)
       for (let t = 0; t < this.ctx; t++) {
         const xt = X.subarray(t * this.d, (t + 1) * this.d);
-        const k = matVec(this.Wk[h], this.d, this.headDim, xt);
+        const k = matVec(this.Wk[h], this.headDim, this.d, xt);
         
         // apply resonance modulation
         const resBoost = this.resonance[ids[t]] * 0.3;
@@ -89,16 +90,15 @@ export class TinyAttentionModel {
         combinedAtt[t] += att[t] / this.nHeads;
       }
 
-      // weighted sum of values
-      const y = new Float32Array(this.d / this.nHeads);
+      // weighted sum of values (project full xt to headDim)
+      const headOut = new Float32Array(this.headDim);
       for (let t = 0; t < this.ctx; t++) {
         const xt = X.subarray(t * this.d, (t + 1) * this.d);
-        const v = matVec(this.Wv[h], this.headDim, this.d / this.nHeads, 
-          xt.subarray(h * this.headDim, (h + 1) * this.headDim));
-        axpy(y, v, att[t]);
+        const v = matVec(this.Wv[h], this.headDim, this.d, xt);
+        axpy(headOut, v, att[t]);
       }
       
-      headOutputs.push(y);
+      headOutputs.push(headOut);
     }
 
     // concatenate heads
@@ -196,22 +196,22 @@ export class TinyAttentionModel {
     
     for (let h = 0; h < this.nHeads; h++) {
       const xLast = X.subarray((this.ctx - 1) * this.d, this.ctx * this.d);
-      const q = matVec(this.Wq[h], this.d, this.headDim, xLast);
+      const q = matVec(this.Wq[h], this.headDim, this.d, xLast);
 
       const scores = new Float32Array(this.ctx);
       for (let t = 0; t < this.ctx; t++) {
         const xt = X.subarray(t * this.d, (t + 1) * this.d);
-        const k = matVec(this.Wk[h], this.d, this.headDim, xt);
+        const k = matVec(this.Wk[h], this.headDim, this.d, xt);
         scores[t] = dot(q, k) / Math.sqrt(this.headDim);
       }
       const att = softmax(scores);
 
+      // project full xt to headDim and accumulate
+      const baseIdx = h * this.headDim;
       for (let t = 0; t < this.ctx; t++) {
         const xt = X.subarray(t * this.d, (t + 1) * this.d);
-        const v = matVec(this.Wv[h], this.headDim, this.d / this.nHeads,
-          xt.subarray(h * this.headDim, (h + 1) * this.headDim));
-        const baseIdx = h * (this.d / this.nHeads);
-        for (let i = 0; i < v.length && baseIdx + i < this.d; i++) {
+        const v = matVec(this.Wv[h], this.headDim, this.d, xt);
+        for (let i = 0; i < this.headDim && baseIdx + i < this.d; i++) {
           y[baseIdx + i] += att[t] * v[i];
         }
       }
