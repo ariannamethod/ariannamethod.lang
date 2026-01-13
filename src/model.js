@@ -292,12 +292,15 @@ export class AriannaLung {
     const drift = state.drift || 0;
     const dissonance = state.dissonance || 0;
     
-    // Direction from top tokens (weighted by probability)
+    // Direction from TOP-K tokens by probability (not first K indices!)
+    // Each top token maps to an angle based on its ID hash (stable direction)
     let dx = 0, dy = 0;
-    for (let i = 0; i < Math.min(10, probs.length); i++) {
-      const angle = (i / 10) * Math.PI * 2;
-      dx += probs[i] * Math.cos(angle);
-      dy += probs[i] * Math.sin(angle);
+    const topK = getTopKIndices(probs, 10);
+    for (const idx of topK) {
+      // Use token ID to get stable angle (so direction is consistent per token)
+      const angle = ((idx * 2654435761) % 1000) / 1000 * Math.PI * 2;
+      dx += probs[idx] * Math.cos(angle);
+      dy += probs[idx] * Math.sin(angle);
     }
 
     // Amplitude from entropy and resonance
@@ -368,12 +371,18 @@ export class AriannaLung {
 // ═══════════════════════════════════════════════════════════════════════════════
 // DARK MATTER — invisible learning / gravitational memory
 // "What the field rejects as command still becomes mass"
-// 
+//
 // Visible learning: accepted injections → resonance/presence updates
 // Dark learning: rejected injections → scars that bend trajectories
-// 
-// Φ_total = Φ_visible + Φ_dark
-// Movement follows -∇Φ_total
+//
+// PHYSICS (FIXED):
+//   Φ_total = Φ_visible + Φ_dark
+//   Movement follows -∇Φ (gradient descent on potential)
+//   Scars REPEL: gradient points AWAY from scar (defensive learning)
+//   The field avoids past mistakes, creating "immune response"
+//
+//   gradient() returns vector FROM scar TO point → positive = repulsion
+//   To attract, negate the gradient: force = -gradient
 // ═══════════════════════════════════════════════════════════════════════════════
 
 class DarkMatter {
@@ -533,4 +542,21 @@ function padOrTrim(arr, n, padVal) {
   if (a.length >= n) return a.slice(a.length - n);
   const pad = new Array(n - a.length).fill(padVal);
   return pad.concat(a);
+}
+
+/**
+ * Get indices of top-K elements by value (descending)
+ * Used for finding most probable tokens
+ */
+function getTopKIndices(arr, k) {
+  const indexed = [];
+  for (let i = 0; i < arr.length; i++) {
+    indexed.push({ idx: i, val: arr[i] });
+  }
+  indexed.sort((a, b) => b.val - a.val);
+  const result = [];
+  for (let i = 0; i < Math.min(k, indexed.length); i++) {
+    result.push(indexed[i].idx);
+  }
+  return result;
 }

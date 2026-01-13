@@ -6,7 +6,7 @@
 //
 // build: emcc arianna_method.c -O2 -s WASM=1 -s MODULARIZE=1 \
 //   -s EXPORT_NAME="AriannaMethod" \
-//   -s EXPORTED_FUNCTIONS='["_am_init","_am_exec","_am_get_state","_am_take_jump","_am_copy_state","_am_enable_pack","_am_pack_enabled","_am_reset_field","_am_reset_debt"]' \
+//   -s EXPORTED_FUNCTIONS='["_am_init","_am_exec","_am_get_state","_am_take_jump","_am_copy_state","_am_enable_pack","_am_disable_pack","_am_pack_enabled","_am_reset_field","_am_reset_debt","_am_step"]' \
 //   -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
 //   -o arianna_method.js
 //
@@ -26,6 +26,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <math.h>
+#include <stdio.h>  // for sscanf in LAW command parsing
 
 #ifdef __cplusplus
 extern "C" {

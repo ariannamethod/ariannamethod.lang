@@ -3,9 +3,12 @@
 // "debt accumulates as |destined - manifested| proxy"
 // calendar conflict: 354 (lunar) vs 365 (solar) = 11-day drift (from PITOMADOM)
 
+// SENTINEL: -1 means "empty cell" (token 0 is a valid word!)
+const CELL_EMPTY = -1;
+
 export class Field {
   constructor({ w, h, tokenizer, model, metrics }) {
-    this.w = w; 
+    this.w = w;
     this.h = h;
     this.tokenizer = tokenizer;
     this.model = model;
@@ -91,7 +94,7 @@ export class Field {
         const innerWall = (x % 14 === 5 && y > 4 && y < this.h - 4) ||
                           (y % 14 === 5 && x > 4 && x < this.w - 4);
         this.solid[this.idx(x, y)] = (border || pillar || innerWall) ? 1 : 0;
-        this.cellTok[this.idx(x, y)] = 0;
+        this.cellTok[this.idx(x, y)] = CELL_EMPTY;
       }
     }
     
@@ -110,7 +113,7 @@ export class Field {
   }
 
   resetManifested() {
-    this.cellTok.fill(0);
+    this.cellTok.fill(CELL_EMPTY);
   }
 
   isSolid(wx, wy) {
@@ -272,10 +275,12 @@ export class Field {
     
     const hebrewPhase = phase(this.time, this.hebrewCycle);   // 0..1
     const gregorianPhase = phase(this.time, this.gregorianCycle); // 0..1
-    
-    // raw drift: absolute phase difference
+
+    // raw drift: CIRCULAR phase difference (wrap-around at 0/1 boundary)
     // when phases diverge, the calendar conflict intensifies
-    const rawDrift = Math.abs(hebrewPhase - gregorianPhase);
+    // using min(d, 1-d) to handle the circular topology correctly
+    const d = Math.abs(hebrewPhase - gregorianPhase);
+    const rawDrift = Math.min(d, 1 - d);  // circular metric: max drift is 0.5
     
     // scaled drift: multiply by configured intensity (default 11 for 11-day difference)
     // this creates the "11-day drift tracking" from PITOMADOM
@@ -429,7 +434,7 @@ export class Field {
         if (x < 1 || y < 1 || x >= this.w - 1 || y >= this.h - 1) continue;
         const i = this.idx(x, y);
         if (this.solid[i] !== 1) continue;
-        if (this.cellTok[i] !== 0) continue;
+        if (this.cellTok[i] !== CELL_EMPTY) continue;  // already manifested
 
         const ahead = (dx * fx + dy * fy);
         const focus = clamp01(this.cfg.attendFocus + 0.08 * ahead);
@@ -461,7 +466,7 @@ export class Field {
       if (x < 1 || y < 1 || x >= this.w - 1 || y >= this.h - 1) continue;
       const i = this.idx(x, y);
       if (this.solid[i] !== 1) continue;
-      if (this.cellTok[i] !== 0) continue;
+      if (this.cellTok[i] !== CELL_EMPTY) continue;  // already manifested
 
       const focus = clamp01(this.cfg.attendFocus + 0.12);
       const spread = clamp01(this.cfg.attendSpread + 0.22);
