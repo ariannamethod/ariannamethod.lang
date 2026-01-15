@@ -72,15 +72,16 @@ export class Field {
     this.time = 0;
     this._prevProbs = null;
     
-    // calendar tracking (PITOMADOM style)
-    // NOTE: These are simplified constants, not astronomically accurate.
-    // Real Hebrew calendar: 353-385 days (19-year Metonic cycle with 7 leap months)
-    // Real Gregorian calendar: 365 or 366 days (leap years every 4/100/400 years)
-    // We use constants because the drift represents CONCEPTUAL tension between
-    // calendar systems, not an astronomical simulation. The 11-day difference
-    // is the symbolic heart of PITOMADOM's wormhole probability.
-    this.hebrewCycle = 354;     // lunar year in days (simplified)
-    this.gregorianCycle = 365;  // solar year in days (simplified)
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PITOMADOM CALENDAR SYSTEM — honest implementation
+    // Hebrew lunar calendar (Metonic cycle) vs Gregorian solar calendar
+    // The drift is REAL and DYNAMIC, not a constant approximation
+    // ═══════════════════════════════════════════════════════════════════════════
+    this.calendarEpoch = 0;     // game time start (we count from here)
+    this.hebrewYearStart = 0;   // accumulated days at start of current Hebrew year
+    this.gregorianYearStart = 0; // accumulated days at start of current Gregorian year
+    this.currentHebrewYear = 1;  // year counter (1-based for Metonic cycle)
+    this.currentGregorianYear = 1;
     
     // TEMPOLOCK state
     this.tempoTick = 0;         // internal tempo counter
@@ -273,24 +274,44 @@ export class Field {
   step(px, py, pa, dt) {
     this.time += dt;
 
-    // CALENDAR CONFLICT (from PITOMADOM)
-    // Hebrew lunar year: 354 days (12 months × 29.5 days)
-    // Gregorian solar year: 365 days
-    // The 11-day difference creates phase drift that accumulates
-    // This drift is the WORMHOLE GATE — when calendars disagree, spacetime tears
-    
-    const hebrewPhase = phase(this.time, this.hebrewCycle);   // 0..1
-    const gregorianPhase = phase(this.time, this.gregorianCycle); // 0..1
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PITOMADOM CALENDAR CONFLICT — honest implementation
+    // Hebrew lunar calendar (Metonic cycle) vs Gregorian solar calendar
+    // The drift is REAL: it accumulates differently in leap vs common years
+    // When calendars disagree maximally, spacetime tears (wormhole gate opens)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Convert game time to "days" (1 game second = 1 day for dramatic effect)
+    // This makes the calendar drift visible during gameplay
+    const gameDays = this.time;
+
+    // Calculate phases using proper year lengths (Metonic + Gregorian leap logic)
+    const calState = {
+      hebrewYearStart: this.hebrewYearStart,
+      gregorianYearStart: this.gregorianYearStart,
+      currentHebrewYear: this.currentHebrewYear,
+      currentGregorianYear: this.currentGregorianYear
+    };
+    const cal = calculateCalendarPhases(gameDays, calState);
+
+    // Update state
+    this.hebrewYearStart = calState.hebrewYearStart;
+    this.gregorianYearStart = calState.gregorianYearStart;
+    this.currentHebrewYear = calState.currentHebrewYear;
+    this.currentGregorianYear = calState.currentGregorianYear;
 
     // raw drift: CIRCULAR phase difference (wrap-around at 0/1 boundary)
     // when phases diverge, the calendar conflict intensifies
-    // using min(d, 1-d) to handle the circular topology correctly
-    const d = Math.abs(hebrewPhase - gregorianPhase);
+    const d = Math.abs(cal.hebrewPhase - cal.gregorianPhase);
     const rawDrift = Math.min(d, 1 - d);  // circular metric: max drift is 0.5
-    
-    // scaled drift: multiply by configured intensity (default 11 for 11-day difference)
-    // this creates the "11-day drift tracking" from PITOMADOM
-    const drift = rawDrift * (this.cfg.calendarDrift / 11);
+
+    // Year length difference contributes to drift intensity
+    // In a Hebrew leap year, drift changes faster (30 extra days)
+    const yearLengthRatio = cal.hebrewYearLength / cal.gregorianYearLength;
+    const driftIntensity = 1 + Math.abs(1 - yearLengthRatio) * 2;
+
+    // scaled drift: multiply by configured intensity AND year length ratio
+    const drift = rawDrift * (this.cfg.calendarDrift / 11) * driftIntensity;
     this.metrics.calendarDrift = drift;
 
     // context token from motion/pose
@@ -517,8 +538,75 @@ function symKL(p, q) {
   return 0.5 * (a + b);
 }
 
-function phase(t, period) { 
-  return (t % period) / period; 
+function phase(t, period) {
+  return (t % period) / period;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PITOMADOM CALENDAR FUNCTIONS — honest implementation
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Hebrew year length (Metonic cycle implementation)
+ * 19-year cycle: years 3, 6, 8, 11, 14, 17, 19 are leap years (13 months)
+ * Year length varies: 353/354/355 (common) or 383/384/385 (leap)
+ * We use averages: 354 common, 384 leap
+ */
+function hebrewYearLength(yearInCycle) {
+  // yearInCycle is 1-19 (Metonic cycle position)
+  const cyclePos = ((yearInCycle - 1) % 19) + 1;
+  const leapYears = [3, 6, 8, 11, 14, 17, 19];
+  const isLeap = leapYears.includes(cyclePos);
+  // Common year ~354 days, leap year ~384 days (adds Adar I ~30 days)
+  return isLeap ? 384 : 354;
+}
+
+/**
+ * Gregorian year length (leap year calculation)
+ * Leap year: divisible by 4, except centuries unless divisible by 400
+ */
+function gregorianYearLength(year) {
+  if (year % 400 === 0) return 366;
+  if (year % 100 === 0) return 365;
+  if (year % 4 === 0) return 366;
+  return 365;
+}
+
+/**
+ * Calculate calendar phases with proper year lengths
+ * Returns {hebrewPhase, gregorianPhase, hebrewYear, gregorianYear}
+ */
+function calculateCalendarPhases(gameDays, state) {
+  // Update Hebrew calendar
+  let hebrewDays = gameDays - state.hebrewYearStart;
+  let hebrewYearLen = hebrewYearLength(state.currentHebrewYear);
+  while (hebrewDays >= hebrewYearLen) {
+    state.hebrewYearStart += hebrewYearLen;
+    state.currentHebrewYear++;
+    hebrewDays = gameDays - state.hebrewYearStart;
+    hebrewYearLen = hebrewYearLength(state.currentHebrewYear);
+  }
+  const hebrewPhase = hebrewDays / hebrewYearLen;
+
+  // Update Gregorian calendar
+  let gregDays = gameDays - state.gregorianYearStart;
+  let gregYearLen = gregorianYearLength(state.currentGregorianYear);
+  while (gregDays >= gregYearLen) {
+    state.gregorianYearStart += gregYearLen;
+    state.currentGregorianYear++;
+    gregDays = gameDays - state.gregorianYearStart;
+    gregYearLen = gregorianYearLength(state.currentGregorianYear);
+  }
+  const gregorianPhase = gregDays / gregYearLen;
+
+  return {
+    hebrewPhase,
+    gregorianPhase,
+    hebrewYear: state.currentHebrewYear,
+    gregorianYear: state.currentGregorianYear,
+    hebrewYearLength: hebrewYearLen,
+    gregorianYearLength: gregYearLen
+  };
 }
 
 function clamp01(x) { 

@@ -49,36 +49,68 @@ export class DSL {
   apply(script) {
     const lines = String(script).split("\n");
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // MACRO SYSTEM — supports both single-line and multiline definitions
+    // Single: MACRO foo { PROPHECY 7; VELOCITY RUN }
+    // Multi:  MACRO foo {
+    //           PROPHECY 7
+    //           VELOCITY RUN
+    //         }
+    // ─────────────────────────────────────────────────────────────────────────
+    let macroAccum = null;  // { name: string, body: string[] } when inside multiline macro
+
     for (let raw of lines) {
       let line = raw.trim();
       if (!line || line.startsWith("#")) continue;
 
-      // ─────────────────────────────────────────────────────────────────────────
-      // MACRO SYSTEM
-      // LIMITATION: Macros must be defined on a single line!
-      // Use semicolons to separate commands: MACRO foo { CMD1; CMD2; CMD3 }
-      // Multiline macro definitions are NOT supported (parser limitation)
-      // ─────────────────────────────────────────────────────────────────────────
+      // If we're accumulating a multiline macro...
+      if (macroAccum) {
+        if (line === "}") {
+          // End of macro — save it
+          this.macros.set(macroAccum.name, macroAccum.body.join("\n"));
+          macroAccum = null;
+        } else {
+          // Strip trailing } if it's on same line as last command
+          if (line.endsWith("}")) {
+            macroAccum.body.push(line.slice(0, -1).trim());
+            this.macros.set(macroAccum.name, macroAccum.body.join("\n"));
+            macroAccum = null;
+          } else {
+            macroAccum.body.push(line);
+          }
+        }
+        continue;
+      }
 
       // macro expansion: @macroname
       if (line.startsWith("@")) {
         const macroName = line.slice(1).split(/\s+/)[0];
         const macroScript = this.macros.get(macroName);
         if (macroScript) {
-          // Replace semicolons with newlines for execution
+          // Semicolons also work as line separators
           this.apply(macroScript.replace(/;/g, '\n'));
         }
         continue;
       }
 
       // macro definition: MACRO name { ... }
-      // Must be on single line: MACRO myname { PROPHECY 7; VELOCITY RUN }
       if (line.toUpperCase().startsWith("MACRO ")) {
-        const match = line.match(/MACRO\s+(\w+)\s*\{([\s\S]*?)\}/i);
-        if (match) {
-          this.macros.set(match[1], match[2].trim());
+        // Try single-line first: MACRO foo { cmd1; cmd2 }
+        const singleMatch = line.match(/MACRO\s+(\w+)\s*\{(.+)\}/i);
+        if (singleMatch) {
+          this.macros.set(singleMatch[1], singleMatch[2].trim());
+          continue;
         }
-        continue;
+
+        // Multiline start: MACRO foo { (no closing brace on this line)
+        const multiMatch = line.match(/MACRO\s+(\w+)\s*\{(.*)$/i);
+        if (multiMatch) {
+          macroAccum = {
+            name: multiMatch[1],
+            body: multiMatch[2].trim() ? [multiMatch[2].trim()] : []
+          };
+          continue;
+        }
       }
 
       const [cmd, ...rest] = line.split(/\s+/);
