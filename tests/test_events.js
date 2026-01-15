@@ -1,38 +1,13 @@
-// test_events.js — Async Event System tests
-// LEO/STANLEY/HAZE pattern + EventBus pub/sub
+// test_events.js — Async Core tests
+// только EventBus + AsyncField — без external observers
 //
-// "concurrent observers watching the field breathe"
+// LEO/STANLEY/HAZE тесты придут ПОТОМ, когда мир устоится
 
-import {
-  EventBus,
-  FieldEvent,
-  AsyncObserver,
-  LEO,
-  STANLEY,
-  HAZE,
-  ObserverRegistry,
-  AsyncField,
-} from '../src/events.js';
+import { EventBus, FieldEvent, AsyncField } from '../src/events.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MOCK DEPENDENCIES
+// MOCK FIELD
 // ═══════════════════════════════════════════════════════════════════════════════
-
-class MockModel {
-  constructor() {
-    this.vocabSize = 100;
-    this.lr = 0.01;
-    this.temporalMode = 'symmetric';
-    this.temporalAlpha = 0.5;
-    this.resonance = new Float32Array(100).fill(0.5);
-  }
-  setTemporalMode(mode) {
-    this.temporalMode = mode;
-    if (mode === 'prophecy') this.temporalAlpha = 0.7;
-    else if (mode === 'retrodiction') this.temporalAlpha = 0.3;
-    else this.temporalAlpha = 0.5;
-  }
-}
 
 class MockField {
   constructor() {
@@ -40,18 +15,10 @@ class MockField {
       emergence: 0.5,
       pain: 0.3,
       dissonance: 0.2,
-      resonanceField: 0.6,
     };
-    this.model = new MockModel();
   }
   step(px, py, pa, dt) {
-    return {
-      x: px + 0.1,
-      y: py + 0.1,
-      temporalAsymmetry: 0.1,
-      attentionMap: new Float32Array([0.25, 0.25, 0.25, 0.25]),
-      didJump: false,
-    };
+    return { x: px + 0.1, y: py + 0.1, didJump: false };
   }
 }
 
@@ -89,7 +56,7 @@ async function testAsync(name, fn) {
 }
 
 async function runTests() {
-  console.log('\n\ud83d\udd04 Async Event System Tests\n');
+  console.log('\n\ud83d\udd04 Async Core Tests\n');
   console.log('='.repeat(60) + '\n');
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -99,26 +66,22 @@ async function runTests() {
   test('EventBus can be instantiated', () => {
     const bus = new EventBus();
     assert(bus.listeners instanceof Map, 'should have listeners Map');
-    assert(bus.asyncQueue instanceof Array, 'should have asyncQueue');
   });
 
-  await testAsync('EventBus.on subscribes to events', async () => {
+  test('EventBus.on subscribes to events', () => {
     const bus = new EventBus();
     let received = null;
 
-    bus.on(FieldEvent.STEP, (event) => {
-      received = event.data;
+    bus.on(FieldEvent.STEP, (data) => {
+      received = data;
     });
 
     bus.emit(FieldEvent.STEP, { test: true });
-    // Wait for async processing
-    await new Promise(r => setTimeout(r, 10));
-
     assert(received !== null, 'handler should be called');
     assert(received.test === true, 'data should be passed');
   });
 
-  await testAsync('EventBus.once fires only once', async () => {
+  test('EventBus.once fires only once', () => {
     const bus = new EventBus();
     let count = 0;
 
@@ -126,25 +89,35 @@ async function runTests() {
 
     bus.emit(FieldEvent.STEP, {});
     bus.emit(FieldEvent.STEP, {});
-    await new Promise(r => setTimeout(r, 20));
 
     assert(count === 1, `should fire once, got ${count}`);
   });
 
-  await testAsync('EventBus.off unsubscribes', async () => {
+  test('EventBus.off unsubscribes', () => {
     const bus = new EventBus();
     let count = 0;
     const handler = () => count++;
 
     bus.on(FieldEvent.STEP, handler);
     bus.emit(FieldEvent.STEP, {});
-    await new Promise(r => setTimeout(r, 10));
 
     bus.off(FieldEvent.STEP, handler);
     bus.emit(FieldEvent.STEP, {});
-    await new Promise(r => setTimeout(r, 10));
 
     assert(count === 1, `should only fire before off, got ${count}`);
+  });
+
+  test('EventBus.on returns unsubscribe function', () => {
+    const bus = new EventBus();
+    let count = 0;
+
+    const unsub = bus.on(FieldEvent.STEP, () => count++);
+    bus.emit(FieldEvent.STEP, {});
+
+    unsub();
+    bus.emit(FieldEvent.STEP, {});
+
+    assert(count === 1, `should only fire before unsub, got ${count}`);
   });
 
   await testAsync('EventBus.emitAsync waits for handlers', async () => {
@@ -160,19 +133,6 @@ async function runTests() {
     assert(resolved === true, 'should wait for async handler');
   });
 
-  test('EventBus stores event history', () => {
-    const bus = new EventBus();
-    bus.emit(FieldEvent.STEP, { n: 1 });
-    bus.emit(FieldEvent.STEP, { n: 2 });
-    bus.emit(FieldEvent.JUMP, { n: 3 });
-
-    const history = bus.getHistory(FieldEvent.STEP);
-    assert(history.length === 2, 'should have 2 STEP events');
-
-    const allHistory = bus.getHistory();
-    assert(allHistory.length === 3, 'should have 3 total events');
-  });
-
   test('EventBus.clear removes all listeners', () => {
     const bus = new EventBus();
     bus.on(FieldEvent.STEP, () => {});
@@ -183,328 +143,22 @@ async function runTests() {
     assert(bus.listeners.size === 0, 'should have no listeners');
   });
 
-  await testAsync('EventBus respects priority ordering', async () => {
+  test('EventBus handles multiple listeners', () => {
     const bus = new EventBus();
-    const order = [];
+    const calls = [];
 
-    bus.on(FieldEvent.STEP, () => order.push('low'), { priority: 1 });
-    bus.on(FieldEvent.STEP, () => order.push('high'), { priority: 10 });
-    bus.on(FieldEvent.STEP, () => order.push('mid'), { priority: 5 });
+    bus.on(FieldEvent.STEP, () => calls.push('a'));
+    bus.on(FieldEvent.STEP, () => calls.push('b'));
+    bus.on(FieldEvent.STEP, () => calls.push('c'));
 
-    await bus.emitAsync(FieldEvent.STEP, {});
+    bus.emit(FieldEvent.STEP, {});
 
-    assert(order[0] === 'high', 'high priority should fire first');
-    assert(order[1] === 'mid', 'mid priority should fire second');
-    assert(order[2] === 'low', 'low priority should fire last');
+    assert(calls.length === 3, 'should call all handlers');
+    assert(calls.join('') === 'abc', 'should call in order');
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  console.log('\n2. AsyncObserver — base class\n');
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  test('AsyncObserver can be instantiated', () => {
-    const bus = new EventBus();
-    const obs = new AsyncObserver('TestObserver', bus);
-
-    assert(obs.name === 'TestObserver', 'should have name');
-    assert(obs.active === false, 'should start inactive');
-    assert(obs.bus === bus, 'should reference EventBus');
-  });
-
-  test('AsyncObserver.start activates observer', () => {
-    const bus = new EventBus();
-    const obs = new AsyncObserver('TestObserver', bus);
-
-    obs.start();
-    assert(obs.active === true, 'should be active after start');
-  });
-
-  test('AsyncObserver.stop deactivates observer', () => {
-    const bus = new EventBus();
-    const obs = new AsyncObserver('TestObserver', bus);
-
-    obs.start();
-    obs.stop();
-    assert(obs.active === false, 'should be inactive after stop');
-  });
-
-  test('AsyncObserver.subscribe tracks subscriptions', () => {
-    const bus = new EventBus();
-    const obs = new AsyncObserver('TestObserver', bus);
-
-    obs.subscribe(FieldEvent.STEP, () => {});
-    assert(obs.subscriptions.length === 1, 'should track subscription');
-  });
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  console.log('\n3. LEO — Light Emergent Observer\n');
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  test('LEO can be instantiated with options', () => {
-    const bus = new EventBus();
-    const leo = new LEO(bus, { emergenceThreshold: 0.8, cooldown: 500 });
-
-    assert(leo.name === 'LEO', 'should be named LEO');
-    assert(leo.emergenceThreshold === 0.8, 'should respect threshold option');
-    assert(leo.cooldown === 500, 'should respect cooldown option');
-  });
-
-  await testAsync('LEO tracks emergence history', async () => {
-    const bus = new EventBus();
-    const leo = new LEO(bus);
-    leo.start();
-
-    // Simulate step events
-    for (let i = 0; i < 10; i++) {
-      bus.emit(FieldEvent.STEP, { metrics: { emergence: 0.3 + i * 0.01 } });
-    }
-    await new Promise(r => setTimeout(r, 50));
-
-    assert(leo.emergenceHistory.length === 10, 'should track history');
-    leo.stop();
-  });
-
-  await testAsync('LEO detects emergence above threshold', async () => {
-    const bus = new EventBus();
-
-    const leo = new LEO(bus, {
-      emergenceThreshold: 0.5,
-      cooldown: 0,
-    });
-    leo.start();
-
-    // Emit step that should trigger emergence spike
-    await bus.emitAsync(FieldEvent.STEP, { metrics: { emergence: 0.7 } });
-    // Wait for cascade processing
-    await new Promise(r => setTimeout(r, 100));
-
-    // Check that LEO detected the spike (via history at minimum)
-    assert(leo.emergenceHistory.length === 1, 'should have 1 history entry');
-    assert(leo.emergenceHistory[0].v === 0.7, 'should record emergence=0.7');
-
-    // Check threshold detection logic directly
-    const emergence = 0.7;
-    const threshold = leo.emergenceThreshold;
-    const aboveThreshold = emergence > threshold;
-    assert(aboveThreshold === true, `0.7 > 0.5 should be true`);
-
-    // Check trend computation works
-    const trend = leo._computeTrend();
-    assert(typeof trend === 'number', 'trend should be computed');
-
-    leo.stop();
-  });
-
-  test('LEO.getState returns current state', () => {
-    const bus = new EventBus();
-    const leo = new LEO(bus);
-    leo.start();
-
-    const state = leo.getState();
-    assert('active' in state, 'should have active');
-    assert('lastTrigger' in state, 'should have lastTrigger');
-    assert('currentTrend' in state, 'should have currentTrend');
-
-    leo.stop();
-  });
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  console.log('\n4. STANLEY — State Transformer\n');
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  test('STANLEY can be instantiated with model', () => {
-    const bus = new EventBus();
-    const model = new MockModel();
-    const stanley = new STANLEY(bus, model, { learningRate: 0.01 });
-
-    assert(stanley.name === 'STANLEY', 'should be named STANLEY');
-    assert(stanley.model === model, 'should have model reference');
-    assert(stanley.learningRate === 0.01, 'should respect learningRate');
-  });
-
-  await testAsync('STANLEY adapts learning rate based on stability', async () => {
-    const bus = new EventBus();
-    const model = new MockModel();
-    const stanley = new STANLEY(bus, model, { adaptiveMode: true, learningRate: 0.01 });
-    stanley.start();
-
-    const initialLR = model.lr;
-
-    // Simulate stable resonance (low variance)
-    for (let i = 0; i < 15; i++) {
-      bus.emit(FieldEvent.STEP, { resonanceField: 0.5 + Math.random() * 0.01 });
-    }
-    await new Promise(r => setTimeout(r, 50));
-
-    // LR should change based on stability
-    assert(model.lr !== initialLR, 'learning rate should adapt');
-    stanley.stop();
-  });
-
-  await testAsync('STANLEY boosts resonance on accepted injection', async () => {
-    const bus = new EventBus();
-    const model = new MockModel();
-    const stanley = new STANLEY(bus, model);
-    stanley.start();
-
-    const before = model.resonance[5];
-
-    bus.emit(FieldEvent.INJECTION_ACCEPTED, { tokenIds: [5] });
-    await new Promise(r => setTimeout(r, 30));
-
-    assert(model.resonance[5] > before, 'should boost resonance');
-    stanley.stop();
-  });
-
-  await testAsync('STANLEY decays resonance on rejected injection', async () => {
-    const bus = new EventBus();
-    const model = new MockModel();
-    const stanley = new STANLEY(bus, model);
-    stanley.start();
-
-    const before = model.resonance[10];
-
-    bus.emit(FieldEvent.INJECTION_REJECTED, { tokenIds: [10] });
-    await new Promise(r => setTimeout(r, 30));
-
-    assert(model.resonance[10] < before, 'should decay resonance');
-    stanley.stop();
-  });
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  console.log('\n5. HAZE — Hybrid Attention Zone Engine\n');
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  test('HAZE can be instantiated with model', () => {
-    const bus = new EventBus();
-    const model = new MockModel();
-    const haze = new HAZE(bus, model, { asymmetryThreshold: 0.4 });
-
-    assert(haze.name === 'HAZE', 'should be named HAZE');
-    assert(haze.model === model, 'should have model reference');
-    assert(haze.asymmetryThreshold === 0.4, 'should respect threshold');
-  });
-
-  await testAsync('HAZE tracks attention history', async () => {
-    const bus = new EventBus();
-    const model = new MockModel();
-    const haze = new HAZE(bus, model);
-    haze.start();
-
-    for (let i = 0; i < 10; i++) {
-      bus.emit(FieldEvent.STEP, {
-        temporalAsymmetry: 0.1 + i * 0.05,
-        attentionMap: new Float32Array([0.25, 0.25, 0.25, 0.25]),
-      });
-    }
-    await new Promise(r => setTimeout(r, 50));
-
-    assert(haze.attentionHistory.length === 10, 'should track history');
-    haze.stop();
-  });
-
-  await testAsync('HAZE auto-adjusts temporal mode', async () => {
-    const bus = new EventBus();
-    const model = new MockModel();
-    const haze = new HAZE(bus, model, { autoTemporalMode: true, asymmetryThreshold: 0.1 });
-    haze.start();
-
-    // Simulate strong future-bias trend
-    for (let i = 0; i < 10; i++) {
-      bus.emit(FieldEvent.STEP, {
-        temporalAsymmetry: 0.1 + i * 0.1, // increasing
-        attentionMap: [],
-      });
-    }
-    await new Promise(r => setTimeout(r, 50));
-
-    assert(model.temporalMode === 'prophecy', `should switch to prophecy, got ${model.temporalMode}`);
-    haze.stop();
-  });
-
-  await testAsync('HAZE resets to symmetric on high dissonance', async () => {
-    const bus = new EventBus();
-    const model = new MockModel();
-    model.setTemporalMode('prophecy');
-
-    const haze = new HAZE(bus, model, { autoTemporalMode: true });
-    haze.start();
-
-    bus.emit(FieldEvent.DISSONANCE_HIGH, { dissonance: 0.9 });
-    await new Promise(r => setTimeout(r, 30));
-
-    assert(model.temporalMode === 'symmetric', 'should reset to symmetric');
-    haze.stop();
-  });
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  console.log('\n6. ObserverRegistry — manage multiple observers\n');
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  test('ObserverRegistry can register observers', () => {
-    const bus = new EventBus();
-    const registry = new ObserverRegistry(bus);
-    const leo = new LEO(bus);
-
-    registry.register('LEO', leo);
-    assert(registry.get('LEO') === leo, 'should store observer');
-  });
-
-  test('ObserverRegistry.startAll starts all observers', () => {
-    const bus = new EventBus();
-    const registry = new ObserverRegistry(bus);
-    const model = new MockModel();
-
-    registry.register('LEO', new LEO(bus));
-    registry.register('STANLEY', new STANLEY(bus, model));
-    registry.register('HAZE', new HAZE(bus, model));
-
-    registry.startAll();
-
-    assert(registry.get('LEO').active === true, 'LEO should be active');
-    assert(registry.get('STANLEY').active === true, 'STANLEY should be active');
-    assert(registry.get('HAZE').active === true, 'HAZE should be active');
-
-    registry.stopAll();
-  });
-
-  test('ObserverRegistry.stopAll stops all observers', () => {
-    const bus = new EventBus();
-    const registry = new ObserverRegistry(bus);
-
-    registry.register('LEO', new LEO(bus));
-    registry.startAll();
-    registry.stopAll();
-
-    assert(registry.get('LEO').active === false, 'LEO should be inactive');
-  });
-
-  test('ObserverRegistry.getStatus returns all states', () => {
-    const bus = new EventBus();
-    const registry = new ObserverRegistry(bus);
-    const model = new MockModel();
-
-    registry.register('LEO', new LEO(bus));
-    registry.register('STANLEY', new STANLEY(bus, model));
-
-    const status = registry.getStatus();
-
-    assert('LEO' in status, 'should have LEO status');
-    assert('STANLEY' in status, 'should have STANLEY status');
-  });
-
-  test('ObserverRegistry.unregister removes observer', () => {
-    const bus = new EventBus();
-    const registry = new ObserverRegistry(bus);
-
-    registry.register('LEO', new LEO(bus));
-    registry.unregister('LEO');
-
-    assert(registry.get('LEO') === undefined, 'should remove observer');
-  });
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  console.log('\n7. AsyncField — promisified wrapper\n');
+  console.log('\n2. AsyncField — promisified wrapper\n');
   // ─────────────────────────────────────────────────────────────────────────────
 
   test('AsyncField wraps field with event bus', () => {
@@ -525,57 +179,66 @@ async function runTests() {
     bus.on(FieldEvent.STEP, () => { stepReceived = true; });
 
     await asyncField.step(0, 0, 0, 1);
-    await new Promise(r => setTimeout(r, 30));
 
     assert(stepReceived === true, 'should emit STEP event');
   });
 
-  await testAsync('AsyncField.step emits PAIN_SPIKE on high pain', async () => {
+  await testAsync('AsyncField.step emits PAIN_SPIKE on threshold cross', async () => {
     const bus = new EventBus();
     const field = new MockField();
-    field.metrics.pain = 0.9;
+    field.metrics.pain = 0.5; // below threshold
     const asyncField = new AsyncField(field, bus);
 
     let painReceived = false;
     bus.on(FieldEvent.PAIN_SPIKE, () => { painReceived = true; });
 
+    // first step - pain still below
     await asyncField.step(0, 0, 0, 1);
-    await new Promise(r => setTimeout(r, 30));
+    assert(painReceived === false, 'should not emit yet');
 
+    // simulate pain spike
+    field.step = () => {
+      field.metrics.pain = 0.9; // now above threshold
+      return { x: 0.1, y: 0.1 };
+    };
+
+    await asyncField.step(0, 0, 0, 1);
     assert(painReceived === true, 'should emit PAIN_SPIKE');
   });
 
-  await testAsync('AsyncField.inject emits INJECTION_ACCEPTED', async () => {
+  await testAsync('AsyncField.step emits EMERGENCE_SPIKE on threshold cross', async () => {
     const bus = new EventBus();
     const field = new MockField();
-    field.model.inject = () => ({ accepted: true, dx: 0.1, dy: 0.1 });
+    field.metrics.emergence = 0.4; // below threshold
     const asyncField = new AsyncField(field, bus);
 
-    let accepted = false;
-    bus.on(FieldEvent.INJECTION_ACCEPTED, () => { accepted = true; });
+    let emergenceReceived = false;
+    bus.on(FieldEvent.EMERGENCE_SPIKE, () => { emergenceReceived = true; });
 
-    await asyncField.inject([1, 2, 3]);
-    await new Promise(r => setTimeout(r, 30));
+    // simulate emergence spike
+    field.step = () => {
+      field.metrics.emergence = 0.8;
+      return { x: 0.1, y: 0.1 };
+    };
 
-    assert(accepted === true, 'should emit INJECTION_ACCEPTED');
+    await asyncField.step(0, 0, 0, 1);
+    assert(emergenceReceived === true, 'should emit EMERGENCE_SPIKE');
   });
 
-  await testAsync('AsyncField.inject emits INJECTION_REJECTED + SCAR', async () => {
+  await testAsync('AsyncField.step emits JUMP on wormhole', async () => {
     const bus = new EventBus();
     const field = new MockField();
-    field.model.inject = () => ({ accepted: false, scarMass: 0.5 });
+    field.step = () => ({ x: 10, y: 10, didJump: true });
     const asyncField = new AsyncField(field, bus);
 
-    let rejected = false;
-    let scarred = false;
-    bus.on(FieldEvent.INJECTION_REJECTED, () => { rejected = true; });
-    bus.on(FieldEvent.SCAR_DEPOSITED, () => { scarred = true; });
+    let jumpReceived = false;
+    bus.on(FieldEvent.JUMP, (data) => {
+      jumpReceived = true;
+      assert(data.to.x === 10, 'should have destination');
+    });
 
-    await asyncField.inject([1, 2, 3]);
-    await new Promise(r => setTimeout(r, 30));
-
-    assert(rejected === true, 'should emit INJECTION_REJECTED');
-    assert(scarred === true, 'should emit SCAR_DEPOSITED');
+    await asyncField.step(0, 0, 0, 1);
+    assert(jumpReceived === true, 'should emit JUMP');
   });
 
   await testAsync('AsyncField.waitFor resolves on event', async () => {
@@ -583,16 +246,55 @@ async function runTests() {
     const field = new MockField();
     const asyncField = new AsyncField(field, bus);
 
-    // Setup timeout race
     const waitPromise = asyncField.waitFor(FieldEvent.EMERGENCE_SPIKE, 1000);
 
-    // Emit after short delay
+    // emit after short delay
     setTimeout(() => {
-      bus.emit(FieldEvent.EMERGENCE_SPIKE, { test: true });
+      bus.emit(FieldEvent.EMERGENCE_SPIKE, { value: 0.9 });
     }, 50);
 
-    const event = await waitPromise;
-    assert(event.data.test === true, 'should receive event data');
+    const data = await waitPromise;
+    assert(data.value === 0.9, 'should receive event data');
+  });
+
+  await testAsync('AsyncField.waitFor rejects on timeout', async () => {
+    const bus = new EventBus();
+    const field = new MockField();
+    const asyncField = new AsyncField(field, bus);
+
+    try {
+      await asyncField.waitFor(FieldEvent.EMERGENCE_SPIKE, 50);
+      assert(false, 'should have thrown');
+    } catch (e) {
+      assert(e.message.includes('Timeout'), 'should timeout');
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  console.log('\n3. FieldEvent — event type constants\n');
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  test('FieldEvent has core events', () => {
+    assert(FieldEvent.STEP === 'field:step', 'should have STEP');
+    assert(FieldEvent.JUMP === 'field:jump', 'should have JUMP');
+    assert(FieldEvent.TUNNEL === 'field:tunnel', 'should have TUNNEL');
+  });
+
+  test('FieldEvent has threshold events', () => {
+    assert(FieldEvent.PAIN_SPIKE === 'field:pain_spike', 'should have PAIN_SPIKE');
+    assert(FieldEvent.EMERGENCE_SPIKE === 'field:emergence_spike', 'should have EMERGENCE_SPIKE');
+    assert(FieldEvent.DISSONANCE_HIGH === 'field:dissonance_high', 'should have DISSONANCE_HIGH');
+  });
+
+  test('FieldEvent has entity events', () => {
+    assert(FieldEvent.SHADOW_APPROACH === 'entity:shadow_approach', 'should have SHADOW_APPROACH');
+    assert(FieldEvent.FACE_EMERGE === 'entity:face_emerge', 'should have FACE_EMERGE');
+  });
+
+  test('FieldEvent has dark matter events', () => {
+    assert(FieldEvent.SCAR_DEPOSIT === 'darkmatter:scar', 'should have SCAR_DEPOSIT');
+    assert(FieldEvent.INJECTION_ACCEPTED === 'inject:accept', 'should have INJECTION_ACCEPTED');
+    assert(FieldEvent.INJECTION_REJECTED === 'inject:reject', 'should have INJECTION_REJECTED');
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -606,7 +308,7 @@ async function runTests() {
     console.log('\u274c Some tests failed.\n');
     process.exit(1);
   } else {
-    console.log('\u2705 All async tests passed! observers are watching.\n');
+    console.log('\u2705 Async core ready. LEO/STANLEY/HAZE придут потом.\n');
     process.exit(0);
   }
 }

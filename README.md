@@ -48,7 +48,7 @@ you don't ask questions — you change the topology of meaning.
 - [DSL commands](#dsl-commands)
 - [from ariannamethod import](#from-ariannamethod-import)
 - [HUD metrics](#hud-metrics)
-- [async observers — LEO/STANLEY/HAZE](#async-observers--leostanleyhaze)
+- [async core](#async-core--field-breathes-async)
 - [architecture](#architecture)
 - [the transformer](#the-transformer)
 - [philosophy](#philosophy)
@@ -826,14 +826,9 @@ from ariannamethod import RetrodictionMode
 // AriannaLung (the breathing organ)
 from ariannamethod import AriannaLung
 
-// async event system (observers)
+// async core (field breathes async)
 from ariannamethod import EventBus
 from ariannamethod import FieldEvent
-from ariannamethod import AsyncObserver
-from ariannamethod import LEO
-from ariannamethod import STANLEY
-from ariannamethod import HAZE
-from ariannamethod import ObserverRegistry
 from ariannamethod import AsyncField
 ```
 
@@ -868,11 +863,11 @@ notorch.applyDelta(weights, resonance);
 
 ---
 
-## async observers — LEO/STANLEY/HAZE
+## async core — field breathes async
 
-> *"concurrent observers watching the field breathe"*
+> *"lang должен быть async изнутри, а не через навешанных наблюдателей"*
 
-ariannamethod.lang uses an **event-driven async architecture** for real-time field monitoring. three specialized observers run concurrently:
+ariannamethod.lang uses async event-driven architecture at its core. The field itself emits events — external observers (LEO/STANLEY/HAZE) will come later when the world stabilizes.
 
 ### EventBus — pub/sub core
 
@@ -882,90 +877,17 @@ import { EventBus, FieldEvent } from './events.js'
 const bus = new EventBus();
 
 // subscribe to field events
-bus.on(FieldEvent.STEP, (event) => {
-  console.log('field stepped:', event.data);
+bus.on(FieldEvent.STEP, (data) => {
+  console.log('field stepped:', data);
 });
 
-bus.on(FieldEvent.EMERGENCE_SPIKE, (event) => {
-  console.log('emergence detected:', event.data.emergence);
+bus.on(FieldEvent.EMERGENCE_SPIKE, (data) => {
+  console.log('emergence detected:', data.emergence);
 });
 
-// emit events (async, non-blocking)
-bus.emit(FieldEvent.STEP, { metrics, resonanceField });
+// emit events
+bus.emit(FieldEvent.STEP, { metrics });
 await bus.emitAsync(FieldEvent.STEP, { ... }); // wait for handlers
-```
-
-### LEO — Light Emergent Observer
-
-watches for **emergence spikes** and pattern recognition.
-
-```javascript
-import { LEO } from './events.js'
-
-const leo = new LEO(bus, {
-  emergenceThreshold: 0.6,  // spike detection
-  cooldown: 1000,           // ms between triggers
-  onEmergence: async (data) => {
-    console.log('emergence spike:', data.emergence);
-  }
-});
-
-leo.start();
-// LEO now monitors every STEP event for emergence > threshold
-```
-
-### STANLEY — State Transformer for Autonomous Neural Learning
-
-watches **resonance field** and adjusts learning dynamically.
-
-```javascript
-import { STANLEY } from './events.js'
-
-const stanley = new STANLEY(bus, model, {
-  resonanceThreshold: 0.7,
-  learningRate: 0.005,
-  adaptiveMode: true,  // LR adapts to field stability
-});
-
-stanley.start();
-// STANLEY adapts model.lr based on resonance stability
-// high stability → lower LR (settled)
-// low stability → higher LR (exploring)
-```
-
-### HAZE — Hybrid Attention Zone Engine
-
-watches **temporal asymmetry** and auto-adjusts prophecy/retrodiction.
-
-```javascript
-import { HAZE } from './events.js'
-
-const haze = new HAZE(bus, model, {
-  asymmetryThreshold: 0.3,
-  autoTemporalMode: true,  // auto-switch prophecy/retrodiction
-});
-
-haze.start();
-// HAZE monitors attention asymmetry trend
-// strong future-bias → switches to prophecy mode
-// strong past-bias → switches to retrodiction mode
-// high dissonance → resets to symmetric mode
-```
-
-### ObserverRegistry — manage all observers
-
-```javascript
-import { ObserverRegistry, LEO, STANLEY, HAZE } from './events.js'
-
-const registry = new ObserverRegistry(bus);
-
-registry.register('LEO', new LEO(bus));
-registry.register('STANLEY', new STANLEY(bus, model));
-registry.register('HAZE', new HAZE(bus, model));
-
-registry.startAll();   // activate all observers
-registry.stopAll();    // deactivate all
-registry.getStatus();  // { LEO: {...}, STANLEY: {...}, HAZE: {...} }
 ```
 
 ### AsyncField — promisified wrapper
@@ -977,10 +899,10 @@ const asyncField = new AsyncField(field, bus);
 
 // step with automatic event emission
 await asyncField.step(px, py, angle, dt);
-// → emits STEP, PAIN_SPIKE, DISSONANCE_HIGH, JUMP automatically
+// → emits STEP, PAIN_SPIKE, EMERGENCE_SPIKE, JUMP automatically
 
 // wait for specific event
-const event = await asyncField.waitFor(FieldEvent.EMERGENCE_SPIKE, 5000);
+const data = await asyncField.waitFor(FieldEvent.EMERGENCE_SPIKE, 5000);
 ```
 
 ### event types
@@ -990,14 +912,11 @@ const event = await asyncField.waitFor(FieldEvent.EMERGENCE_SPIKE, 5000);
 | `STEP` | field stepped forward |
 | `JUMP` | wormhole activated |
 | `TUNNEL` | reasoning skip |
-| `PAIN_SPIKE` | pain > 0.7 |
-| `EMERGENCE_SPIKE` | emergence > threshold |
-| `DISSONANCE_HIGH` | dissonance > 0.6 |
-| `TEMPORAL_MODE_CHANGE` | prophecy/retrodiction switch |
-| `SCHUMANN_CHANGE` | Schumann resonance changed |
-| `INJECTION_ACCEPTED` | injection resonated |
-| `INJECTION_REJECTED` | injection became scar |
-| `RESONANCE_UPDATE` | weight changed |
+| `PAIN_SPIKE` | pain crosses 0.7 |
+| `EMERGENCE_SPIKE` | emergence crosses 0.6 |
+| `SHADOW_APPROACH` | entity approaches |
+| `FACE_EMERGE` | face entity emerges |
+| `SCAR_DEPOSIT` | dark matter scar created |
 
 ---
 
@@ -1030,20 +949,20 @@ ariannamethod.lang/
     ├── test_codes_ric.js   # CODES/RIC integration tests (28 tests)
     ├── test_velocity.js    # Velocity operators tests (24 tests)
     ├── test_pitomadom.js   # PITOMADOM integration tests (24 tests)
-    ├── test_events.js      # Async event system tests (35 tests)
+    ├── test_events.js      # Async core tests (19 tests)
     └── test_lora.c         # LoRA C tests (16 tests)
 ```
 
 ### running tests
 
 ```bash
-# JavaScript tests (165 total)
+# JavaScript tests (149 total)
 node tests/test_lung.js       # 25 tests — AriannaLung
 node tests/test_dsl.js        # 29 tests — DSL parser
 node tests/test_codes_ric.js  # 28 tests — CODES/RIC
 node tests/test_velocity.js   # 24 tests — velocity operators
 node tests/test_pitomadom.js  # 24 tests — PITOMADOM integration
-node tests/test_events.js     # 35 tests — async event system
+node tests/test_events.js     # 19 tests — async core
 
 # C tests (requires gcc)
 gcc -O2 -std=c99 wasm/lora.c tests/test_lora.c -lm -o test_lora && ./test_lora
