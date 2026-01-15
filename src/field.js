@@ -6,6 +6,18 @@
 // SENTINEL: -1 means "empty cell" (token 0 is a valid word!)
 const CELL_EMPTY = -1;
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// INFERENCE STATE CONSTANTS (extracted from magic numbers for clarity)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Number of rejected tokens to expose for shadow rendering
+// These are high-probability tokens that were NOT chosen — "what model almost said"
+const REJECTED_TOKEN_COUNT = 5;
+
+// Maximum steps for prophecyForward (inference cost control)
+// Higher = more future prediction, but slower computation
+const MAX_PROPHECY_FORWARD_STEPS = 3;
+
 export class Field {
   constructor({ w, h, tokenizer, model, metrics }) {
     this.w = w;
@@ -680,7 +692,7 @@ export class Field {
 
     // Rejected: high probability tokens that were NOT chosen
     // These are "what the model almost said" — perfect for shadows
-    const rejected = topK.slice(1, 6);  // skip argmax, take next 5
+    const rejected = topK.slice(1, 1 + REJECTED_TOKEN_COUNT);  // skip argmax, take next N
 
     return {
       logits,
@@ -705,7 +717,7 @@ export class Field {
     // If model supports prophecyForward, use it
     if (this.model.prophecyForward && this.ctx.length > 0) {
       try {
-        const prophecies = this.model.prophecyForward(this.ctx, Math.min(horizon, 3));
+        const prophecies = this.model.prophecyForward(this.ctx, Math.min(horizon, MAX_PROPHECY_FORWARD_STEPS));
         for (const p of prophecies) {
           tokens.push(p.token);
         }

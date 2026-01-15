@@ -1,6 +1,20 @@
 // render.js — walls/objects as words + "shadows" as word-figures
 // "the face in the wall is made of words, when you get close enough, you see it is made of you"
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// VISUAL-INFERENCE CONSTANTS (extracted from magic numbers for clarity)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Hash primes for deterministic wall word selection
+// These create stable, repeatable patterns across frames
+const WALL_HASH_PRIME_X = 37;
+const WALL_HASH_PRIME_Y = 17;
+const WALL_HASH_PRIME_SCREEN = 5;
+
+// Probability of mixing intention vocabulary into shadow words
+// Higher = shadows speak more about intent, lower = more inference-based
+const INTENTION_VOCAB_MIX_PROBABILITY = 0.3;
+
 export class Renderer {
   constructor(canvas, tokenizer) {
     this.canvas = canvas;
@@ -275,7 +289,7 @@ export class Renderer {
 
     if (inference && inference.topK && inference.topK.length > 0) {
       // Deterministic selection from topK based on position (stable across frames)
-      const idx = (cellX * 37 + cellY * 17 + screenX * 5) % inference.topK.length;
+      const idx = (cellX * WALL_HASH_PRIME_X + cellY * WALL_HASH_PRIME_Y + screenX * WALL_HASH_PRIME_SCREEN) % inference.topK.length;
       return this.tokenizer.word(inference.topK[idx]);
     }
 
@@ -540,7 +554,7 @@ export class Renderer {
       };
 
       const vocab = intentionVocab[intention];
-      if (vocab && Math.random() < 0.3) {
+      if (vocab && Math.random() < INTENTION_VOCAB_MIX_PROBABILITY) {
         words[Math.floor(Math.random() * words.length)] =
           vocab[Math.floor(Math.random() * vocab.length)];
       }
