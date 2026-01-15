@@ -644,6 +644,124 @@ export class Field {
       this.cellTok[i] = sampleWithDestiny(probs, this.cfg.destiny * 0.5, focus, spread);
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // INFERENCE STATE INTERFACE — v0.6 visual-inference connection
+  // "walls ARE the tokens the model manifested" — this returns the REAL inference
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Get current inference state for rendering
+   * This is the TRUTH that visual output should reflect
+   * @returns {object} inference state with topK, argmax, prophecy, rejected
+   */
+  getInferenceState() {
+    // If model hasn't run yet, return empty state (early frames)
+    if (!this.model || !this.model.lastLogits) {
+      return {
+        logits: null,
+        probs: null,
+        topK: [],
+        argmax: 0,
+        prophecy: [],
+        rejected: [],
+        attention: null,
+      };
+    }
+
+    const logits = this.model.getLogits();
+    const probs = this.model.getProbs();
+    const topK = this.model.getTopK(10);
+    const argmax = this.model.getArgmax();
+    const attention = this.model.getAttention();
+
+    // Prophecy: what the model predicts next (using prophesyForward if available)
+    const prophecy = this._computeProphecy();
+
+    // Rejected: high probability tokens that were NOT chosen
+    // These are "what the model almost said" — perfect for shadows
+    const rejected = topK.slice(1, 6);  // skip argmax, take next 5
+
+    return {
+      logits,
+      probs,
+      topK,           // top 10 probable tokens
+      argmax,         // most probable token
+      prophecy,       // next N predicted tokens
+      rejected,       // high prob but NOT chosen (for shadows)
+      attention,      // attention weights (for visualization)
+    };
+  }
+
+  /**
+   * Compute prophecy tokens (next N most probable)
+   * Uses simple approach: current argmax (not full rollout)
+   * @returns {number[]} predicted token IDs
+   */
+  _computeProphecy() {
+    const horizon = Math.min(this.cfg.prophecy || 7, 12);
+    const tokens = [];
+
+    // If model supports prophecyForward, use it
+    if (this.model.prophecyForward && this.ctx.length > 0) {
+      try {
+        const prophecies = this.model.prophecyForward(this.ctx, Math.min(horizon, 3));
+        for (const p of prophecies) {
+          tokens.push(p.token);
+        }
+        return tokens;
+      } catch (e) {
+        // fallback to simple argmax
+      }
+    }
+
+    // Simple fallback: just use current argmax
+    if (this.model.lastLogits) {
+      const argmax = this.model.getArgmax();
+      tokens.push(argmax);
+    }
+
+    return tokens;
+  }
+
+  /**
+   * Get top-K tokens as words (convenience for rendering)
+   * @param {number} k - how many
+   * @returns {string[]} words
+   */
+  getTopKWords(k = 10) {
+    const state = this.getInferenceState();
+    if (!state.topK || state.topK.length === 0) return [];
+
+    const words = [];
+    for (let i = 0; i < Math.min(k, state.topK.length); i++) {
+      const tokenId = state.topK[i];
+      words.push(this.tokenizer.word(tokenId));
+    }
+    return words;
+  }
+
+  /**
+   * Get prophecy as words
+   * @returns {string[]} predicted words
+   */
+  getProphecyWords() {
+    const state = this.getInferenceState();
+    if (!state.prophecy || state.prophecy.length === 0) return [];
+
+    return state.prophecy.map(id => this.tokenizer.word(id));
+  }
+
+  /**
+   * Get rejected tokens as words (for shadows)
+   * @returns {string[]} rejected words
+   */
+  getRejectedWords() {
+    const state = this.getInferenceState();
+    if (!state.rejected || state.rejected.length === 0) return [];
+
+    return state.rejected.map(id => this.tokenizer.word(id));
+  }
 }
 
 // ---- sampling with "destiny_bias" ----
