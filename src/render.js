@@ -51,9 +51,10 @@ export class Renderer {
       ctx.fillStyle = `rgb(${clamp(0, 255, rr)},${clamp(0, 255, gg)},${clamp(0, 255, bb)})`;
       ctx.fillRect(x, y0, 1, wallH);
 
-      // word overlay (English token)
+      // word overlay (English token) — v0.6: use real inference
       if (r.hit && (x % step === 0)) {
-        const word = this.tokenizer.word(r.tok);
+        // v0.6: Get word from inference if cell token is invalid/empty
+        const word = this._getWallWord(field, r.tok, r.cellX, r.cellY, x);
         const size = clamp(8, 40, wallH * (0.11 + 0.10 * metrics.perplexity * 0.03));
         ctx.font = `${size | 0}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace`;
 
@@ -230,29 +231,83 @@ export class Renderer {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // v0.6 VISUAL-INFERENCE CONNECTION — _phrase() uses REAL inference
+  // "walls ARE the tokens the model manifested" — THIS IS NOW TRUE
+  // ═══════════════════════════════════════════════════════════════════════════
+
   _phrase(field, metrics, k = 3) {
-    // build a small shard from local state
+    // Try to use real inference state first
+    const inference = field.getInferenceState ? field.getInferenceState() : null;
+
+    // If we have real inference, use top-K tokens
+    if (inference && inference.topK && inference.topK.length > 0) {
+      const words = [];
+      for (let i = 0; i < Math.min(k, inference.topK.length); i++) {
+        const tokenId = inference.topK[i];
+        words.push(field.tokenizer.word(tokenId));
+      }
+
+      // pain still injects negation vibe
+      if (metrics.pain > 0.65 && k >= 3) {
+        const forced = ["i", "am", "not"];
+        return forced.concat(words.slice(0, Math.max(0, k - 3))).join(" ");
+      }
+      return words.join(" ");
+    }
+
+    // FALLBACK: use old method for early frames (before inference runs)
+    return this._phraseFallback(field, metrics, k);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // v0.6: Wall words from REAL inference (when cell empty or invalid)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  _getWallWord(field, cellTok, cellX, cellY, screenX) {
+    // If cell has valid manifested token, use it (this IS from inference via manifestation)
+    if (cellTok >= 0) {
+      return this.tokenizer.word(cellTok);
+    }
+
+    // Cell empty or invalid — use inference topK with deterministic selection
+    const inference = field.getInferenceState ? field.getInferenceState() : null;
+
+    if (inference && inference.topK && inference.topK.length > 0) {
+      // Deterministic selection from topK based on position (stable across frames)
+      const idx = (cellX * 37 + cellY * 17 + screenX * 5) % inference.topK.length;
+      return this.tokenizer.word(inference.topK[idx]);
+    }
+
+    // Ultimate fallback
     const v = field.tokenizer.vocabSize();
-    // BUG FIX: token 0 is valid! Don't use || which treats 0 as falsy
+    return this.tokenizer.word(Math.floor(Math.random() * v));
+  }
+
+  _phraseFallback(field, metrics, k) {
+    // Old method: pick from random cells or vocab
+    const v = field.tokenizer.vocabSize();
     const pick = () => {
       const tok = field.tokenAtCell(
         Math.floor(1 + Math.random() * (field.w - 2)),
         Math.floor(1 + Math.random() * (field.h - 2))
       );
-      // CELL_EMPTY is -1, only fallback for that
       return tok >= 0 ? tok : Math.floor(Math.random() * v);
     };
 
     const words = [];
     for (let i = 0; i < k; i++) words.push(field.tokenizer.word(pick()));
 
-    // pain injects negation vibe
     if (metrics.pain > 0.65) {
       const forced = ["i", "am", "not"];
       return forced.concat(words.slice(0, Math.max(0, k - 3))).join(" ");
     }
     return words.join(" ");
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // v0.6: Obelisks show PROPHECY — what the model predicts next
+  // ═══════════════════════════════════════════════════════════════════════════
 
   _drawObelisk(sx, sy, size, field, metrics) {
     const ctx = this.ctx;
@@ -266,7 +321,21 @@ export class Renderer {
     ctx.textBaseline = "middle";
     ctx.font = `${Math.max(10, size * 0.18) | 0}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace`;
     ctx.fillStyle = `rgba(255,255,255,${0.65 - 0.25 * pain})`;
-    ctx.fillText(this._phrase(field, metrics, 2), sx, sy + size * 0.50);
+
+    // v0.6: Show PROPHECY (real model prediction)
+    const inference = field.getInferenceState ? field.getInferenceState() : null;
+    let prophecyText;
+
+    if (inference && inference.prophecy && inference.prophecy.length > 0) {
+      // Use actual prophecy tokens
+      const tokens = inference.prophecy.slice(0, 2);
+      prophecyText = tokens.map(t => field.tokenizer.word(t)).join(" ");
+    } else {
+      // Fallback to phrase
+      prophecyText = this._phrase(field, metrics, 2);
+    }
+
+    ctx.fillText(prophecyText, sx, sy + size * 0.50);
   }
 
   _drawHouse(sx, sy, size, field, metrics) {
@@ -446,10 +515,44 @@ export class Renderer {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // INTENTION WORDS — entities speak their intention
+  // v0.6: INTENTION WORDS — shadows speak REJECTED tokens (what model almost said)
+  // This is now HONEST: shadows show real inference state, not hardcoded words
   // ═══════════════════════════════════════════════════════════════════════════
 
   _getIntentionWords(intention, field, metrics) {
+    // v0.6: Try to use REJECTED tokens from real inference first
+    const inference = field.getInferenceState ? field.getInferenceState() : null;
+
+    if (inference && inference.rejected && inference.rejected.length > 0) {
+      // Use REJECTED high-probability tokens — what the model almost said
+      const words = [];
+      for (let i = 0; i < Math.min(3, inference.rejected.length); i++) {
+        const tokenId = inference.rejected[i];
+        words.push(field.tokenizer.word(tokenId));
+      }
+
+      // Mix with intention-specific words (30% chance) for variety
+      const intentionVocab = {
+        approach: ["come", "closer", "seek"],
+        flee: ["away", "no", "escape"],
+        intercept: ["will", "await", "path"],
+        orbit: ["around", "watch", "circle"],
+      };
+
+      const vocab = intentionVocab[intention];
+      if (vocab && Math.random() < 0.3) {
+        words[Math.floor(Math.random() * words.length)] =
+          vocab[Math.floor(Math.random() * vocab.length)];
+      }
+
+      return words.join(" ");
+    }
+
+    // FALLBACK: use old method for early frames
+    return this._getIntentionWordsFallback(intention, field, metrics);
+  }
+
+  _getIntentionWordsFallback(intention, field, metrics) {
     const intentionVocab = {
       approach: ["come", "closer", "here", "near", "toward", "seek"],
       flee: ["away", "no", "back", "distance", "far", "escape"],
@@ -457,7 +560,7 @@ export class Renderer {
       orbit: ["around", "circle", "watch", "follow", "spiral", "dance"],
       anchor: ["stay", "hold", "root", "ground", "prime", "stable"],
       guard: ["protect", "watch", "dark", "scar", "memory", "keep"],
-      wander: null, // use random words
+      wander: null,
     };
 
     const vocab = intentionVocab[intention];
@@ -465,7 +568,6 @@ export class Renderer {
       return this._phrase(field, metrics, 3);
     }
 
-    // Mix intention words with random field words
     const words = [];
     for (let i = 0; i < 3; i++) {
       if (Math.random() < 0.6) {

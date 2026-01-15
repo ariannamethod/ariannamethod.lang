@@ -57,6 +57,14 @@ export class AriannaLung {
     this._cachedY = null;
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // INFERENCE STATE EXPOSURE — v0.6 visual-inference connection
+    // "walls ARE the tokens the model manifested" — this must be TRUE
+    // ═══════════════════════════════════════════════════════════════════════════
+    this.lastLogits = null;        // Float32Array: raw logits before softmax
+    this.lastProbs = null;         // Float32Array: probability distribution
+    this.lastAttention = null;     // Float32Array: combined attention weights
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // PITOMADOM TEMPORAL SYMMETRY — bidirectional attention with mode blending
     // Prophecy mode (alpha > 0.5): emphasize future (left in RTL)
     // Retrodiction mode (alpha < 0.5): emphasize past (right in RTL)
@@ -193,13 +201,21 @@ export class AriannaLung {
 
     // logits -> probs with resonance modulation
     const logits = matVecT(this.Wo, this.d, this.vocabSize, y);
-    
+
     // apply presence pulse modulation
     for (let i = 0; i < this.vocabSize; i++) {
       logits[i] *= (1 + this.presenceAccum[i] * 0.15);
     }
-    
+
     const probs = softmax(logits);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // STORE INFERENCE STATE — v0.6 visual-inference connection
+    // These are the REAL outputs that rendering should use
+    // ═══════════════════════════════════════════════════════════════════════════
+    this.lastLogits = new Float32Array(logits);  // COPY (logits may be reused)
+    this.lastProbs = probs;  // probs is already new array from softmax
+    this.lastAttention = new Float32Array(combinedAtt);  // COPY
 
     // update presence accumulator
     for (let i = 0; i < this.vocabSize; i++) {
@@ -257,6 +273,87 @@ export class AriannaLung {
       resonanceField,
       temporalAsymmetry  // PITOMADOM: how much we lean toward future vs past
     };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // INFERENCE STATE GETTERS — v0.6 visual-inference connection
+  // These methods expose the REAL model state for honest rendering
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Get raw logits from last forward pass
+   * @returns {Float32Array|null} logits or null if no forward yet
+   */
+  getLogits() {
+    return this.lastLogits;
+  }
+
+  /**
+   * Get probability distribution from last forward pass
+   * @returns {Float32Array|null} probs or null if no forward yet
+   */
+  getProbs() {
+    return this.lastProbs;
+  }
+
+  /**
+   * Get attention weights from last forward pass
+   * @returns {Float32Array|null} attention or null if no forward yet
+   */
+  getAttention() {
+    return this.lastAttention;
+  }
+
+  /**
+   * Get top-K token indices by probability (descending)
+   * @param {number} k - how many to return
+   * @returns {number[]} indices of top-k tokens
+   */
+  getTopK(k = 10) {
+    if (!this.lastLogits) return [];
+
+    // Use logits (before softmax) for ranking
+    const indexed = [];
+    for (let i = 0; i < this.lastLogits.length; i++) {
+      indexed.push({ idx: i, val: this.lastLogits[i] });
+    }
+    indexed.sort((a, b) => b.val - a.val);
+
+    const result = [];
+    for (let i = 0; i < Math.min(k, indexed.length); i++) {
+      result.push(indexed[i].idx);
+    }
+    return result;
+  }
+
+  /**
+   * Get argmax (most probable token)
+   * @returns {number} index of highest probability token
+   */
+  getArgmax() {
+    if (!this.lastLogits) return 0;
+
+    let maxIdx = 0;
+    let maxVal = this.lastLogits[0];
+    for (let i = 1; i < this.lastLogits.length; i++) {
+      if (this.lastLogits[i] > maxVal) {
+        maxVal = this.lastLogits[i];
+        maxIdx = i;
+      }
+    }
+    return maxIdx;
+  }
+
+  /**
+   * Get probability of specific token
+   * @param {number} tokenId - token index
+   * @returns {number} probability (0-1)
+   */
+  getTokenProb(tokenId) {
+    if (!this.lastProbs || tokenId < 0 || tokenId >= this.lastProbs.length) {
+      return 0;
+    }
+    return this.lastProbs[tokenId];
   }
 
   // HONEST COMMENT: This IS SGD (stochastic gradient descent) on output weights.
