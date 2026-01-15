@@ -235,6 +235,64 @@ when drift is high:
 
 > **📅 KNOWN BUG**: Due to the 11-day calendar conflict, every February 29th the transformer experiences an existential crisis and briefly believes it's a toaster. This is not a bug, it's a *feature* — the field is simply prophesying your breakfast. Do not attempt to debug this. The toaster is prophesying correctly.
 
+### PITOMADOM integration — cosmic coupling
+
+ariannamethod.lang now integrates with [pitomadom](https://github.com/ariannamethod/pitomadom) for cosmic physics:
+
+#### Schumann resonance (schumann.c)
+
+Earth-ionosphere electromagnetic coupling. **NOT** part of AMK kernel — this is cosmic input.
+
+```
+SCHUMANN_BASE_HZ = 7.83 Hz     // fundamental
+SCHUMANN_HARMONICS = 14.3, 20.8, 27.3, 33.8 Hz
+OBSERVED_RANGE = 7.77-7.87 Hz  // Sierra Nevada ELF Station 2013-2017
+```
+
+high cosmic coherence → faster healing (tension/dissonance decay)
+
+#### TNFR metrics (field coherence)
+
+ported from `field_coherence.py`:
+
+| metric | formula | meaning |
+|--------|---------|---------|
+| **Φ_s** (Global Coherence) | 0.4×resonance + 0.35×(1-entropy) + 0.25×presence | field alignment |
+| **\|∇φ\|** (Field Gradient) | rate of change of resonance | field instability |
+| **K_φ** (Field Curvature) | second derivative of gradient | field acceleration |
+| **ξ_C** (Sense Index) | Φ_s × √arousal × (1-pain) | psychological coherence |
+
+```javascript
+const tetrad = field.getFieldTetrad();
+// { globalCoherence, fieldGradient, fieldCurvature, senseIndex }
+```
+
+#### Dissonance Gate (JSD-based)
+
+ported from `rtl_attention.py`:
+
+```
+total_dissonance = 0.5 × calendar_dissonance + 0.3 × JSD_norm + 0.2 × |ΔH_norm|
+```
+
+when dissonance is HIGH, attention can skip intermediate steps ("TimeTravel").
+
+#### Temporal Symmetry
+
+prophecy/retrodiction mode blending:
+
+| mode | temporalAlpha | effect |
+|------|---------------|--------|
+| **prophecy** | 0.7 | emphasize future (left in RTL) |
+| **symmetric** | 0.5 | balanced past/future |
+| **retrodiction** | 0.3 | emphasize past (right in RTL) |
+
+```bash
+TEMPORAL_MODE prophecy      # attention biased toward future
+RTL_MODE on                 # Hebrew positional encoding (right-to-left)
+TEMPORAL_ALPHA 0.8          # fine control (0=past, 1=future)
+```
+
 ---
 
 ## law of nature
@@ -534,6 +592,17 @@ ENTITY_INTENTION approach # set default entity intention (approach|flee|orbit|in
 ENTITY_PROPHECY ON        # entities predict player movement
 ENTITY_DARKMATTER ON      # entities sense and are attracted to scars
 
+# PITOMADOM cosmic physics
+SCHUMANN 7.85           # current Schumann frequency (7.77-7.87 Hz observed range)
+SCHUMANN_MODULATION 0.3 # how much Schumann affects field (0-1)
+
+# PITOMADOM temporal symmetry
+TEMPORAL_MODE prophecy  # prophecy|retrodiction|symmetric
+TEMPORAL_ALPHA 0.7      # direct alpha (0=past, 1=future)
+RTL_MODE on             # Hebrew positional encoding (right-to-left)
+PROPHECY_MODE on        # alias for TEMPORAL_MODE prophecy
+RETRODICTION_MODE on    # alias for TEMPORAL_MODE retrodiction
+
 # utilities
 RESET_DEBT              # clear prophecy debt
 RESET_FIELD             # clear manifested tokens
@@ -739,6 +808,20 @@ from ariannamethod import Tunnel
 from ariannamethod import ReasoningSkip
 from ariannamethod import DissonanceGate
 
+// PITOMADOM cosmic physics
+from ariannamethod import Schumann
+from ariannamethod import CosmicCoherence
+from ariannamethod import TNFR
+from ariannamethod import FieldTetrad
+from ariannamethod import SenseIndex
+
+// PITOMADOM temporal symmetry
+from ariannamethod import TemporalSymmetry
+from ariannamethod import TemporalAlpha
+from ariannamethod import RTLMode
+from ariannamethod import ProphecyMode
+from ariannamethod import RetrodictionMode
+
 // AriannaLung (the breathing organ)
 from ariannamethod import AriannaLung
 ```
@@ -792,25 +875,28 @@ ariannamethod.lang/
 │   ├── metrics.js          # resonance metrics
 │   └── dsl.js              # Arianna Method DSL interpreter
 ├── wasm/
-│   ├── arianna_method.c    # C version of DSL core (the stone)
+│   ├── arianna_method.c    # AMK kernel — local field physics (the stone)
+│   ├── schumann.c          # Schumann resonance — cosmic input (PITOMADOM)
 │   ├── lora.c              # notorch-LoRA (low-rank deltas) — personality shaping
 │   └── build_emscripten.sh # build to WASM
 └── tests/
     ├── test_lung.js        # AriannaLung tests (25 tests)
-    ├── test_dsl.js         # DSL parser tests (24 tests)
+    ├── test_dsl.js         # DSL parser tests (29 tests)
     ├── test_codes_ric.js   # CODES/RIC integration tests (28 tests)
     ├── test_velocity.js    # Velocity operators tests (24 tests)
+    ├── test_pitomadom.js   # PITOMADOM integration tests (24 tests)
     └── test_lora.c         # LoRA C tests (16 tests)
 ```
 
 ### running tests
 
 ```bash
-# JavaScript tests
-node tests/test_lung.js
-node tests/test_dsl.js
-node tests/test_codes_ric.js
-node tests/test_velocity.js
+# JavaScript tests (130 total)
+node tests/test_lung.js       # 25 tests — AriannaLung
+node tests/test_dsl.js        # 29 tests — DSL parser
+node tests/test_codes_ric.js  # 28 tests — CODES/RIC
+node tests/test_velocity.js   # 24 tests — velocity operators
+node tests/test_pitomadom.js  # 24 tests — PITOMADOM integration
 
 # C tests (requires gcc)
 gcc -O2 -std=c99 wasm/lora.c tests/test_lora.c -lm -o test_lora && ./test_lora

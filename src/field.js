@@ -72,9 +72,16 @@ export class Field {
     this.time = 0;
     this._prevProbs = null;
     
-    // calendar tracking (PITOMADOM style)
-    this.hebrewCycle = 354;     // lunar year in days
-    this.gregorianCycle = 365;  // solar year in days
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PITOMADOM CALENDAR SYSTEM — honest implementation
+    // Hebrew lunar calendar (Metonic cycle) vs Gregorian solar calendar
+    // The drift is REAL and DYNAMIC, not a constant approximation
+    // ═══════════════════════════════════════════════════════════════════════════
+    this.calendarEpoch = 0;     // game time start (we count from here)
+    this.hebrewYearStart = 0;   // accumulated days at start of current Hebrew year
+    this.gregorianYearStart = 0; // accumulated days at start of current Gregorian year
+    this.currentHebrewYear = 1;  // year counter (1-based for Metonic cycle)
+    this.currentGregorianYear = 1;
     
     // TEMPOLOCK state
     this.tempoTick = 0;         // internal tempo counter
@@ -255,36 +262,200 @@ export class Field {
 
   updateGlitchIntensity() {
     const pas = this.computePAS();
-    const targetGlitch = pas < this.cfg.pasThreshold 
-      ? (this.cfg.pasThreshold - pas) * 2.5 
+    const targetGlitch = pas < this.cfg.pasThreshold
+      ? (this.cfg.pasThreshold - pas) * 2.5
       : 0;
-    
+
     // Smooth transition
     this.cfg.glitchIntensity = 0.9 * this.cfg.glitchIntensity + 0.1 * targetGlitch;
     return this.cfg.glitchIntensity;
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // PITOMADOM TNFR METRICS — Field Coherence (ported from field_coherence.py)
+  // Global Coherence (Φ_s): field alignment measure
+  // Sense Index: psychological coherence (arousal × resonance)
+  // Field Tetrad: (Φ_s, |∇φ|, K_φ, ξ_C) - gradient, curvature, correlation
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  computeGlobalCoherence() {
+    // Φ_s = weighted average of:
+    // - resonance field alignment (how synchronized)
+    // - entropy negation (low entropy = high coherence)
+    // - presence field strength
+    if (!this.metrics) return 0.5;
+
+    const resonance = this.metrics.resonanceField || 0.5;
+    const entropyNeg = 1 - clamp01(this.metrics.entropy / 3);
+    const presence = clamp01(this.metrics.presencePulse);
+
+    // Φ_s = 0.4 × resonance + 0.35 × (1-entropy_norm) + 0.25 × presence
+    const phi_s = 0.4 * resonance + 0.35 * entropyNeg + 0.25 * presence;
+    return clamp01(phi_s);
+  }
+
+  computeFieldGradient() {
+    // |∇φ| = rate of change of resonance field
+    // approximated by tracking previous resonance
+    if (!this.metrics) return 0;
+
+    if (this._prevResonance === undefined) {
+      this._prevResonance = this.metrics.resonanceField || 0.5;
+      return 0;
+    }
+
+    const grad = Math.abs(this.metrics.resonanceField - this._prevResonance);
+    this._prevResonance = this.metrics.resonanceField;
+    return grad;
+  }
+
+  computeFieldCurvature() {
+    // K_φ = second derivative (rate of gradient change)
+    if (!this.metrics) return 0;
+
+    const currentGrad = this.computeFieldGradient();
+    if (this._prevGradient === undefined) {
+      this._prevGradient = currentGrad;
+      return 0;
+    }
+
+    const curvature = Math.abs(currentGrad - this._prevGradient);
+    this._prevGradient = currentGrad;
+    return curvature;
+  }
+
+  computeSenseIndex() {
+    // Sense Index = coherence × arousal × (1 - pain)
+    // High when: coherent field + active engagement + minimal suffering
+    if (!this.metrics) return 0.5;
+
+    const phi_s = this.computeGlobalCoherence();
+    const arousal = this.metrics.arousal || 0.5;
+    const antiPain = 1 - (this.metrics.pain || 0);
+
+    // Sense = Φ_s × √arousal × (1-pain)
+    const sense = phi_s * Math.sqrt(arousal) * antiPain;
+    return clamp01(sense);
+  }
+
+  getFieldTetrad() {
+    // Return full TNFR field tetrad (Φ_s, |∇φ|, K_φ, ξ_C)
+    return {
+      globalCoherence: this.computeGlobalCoherence(),  // Φ_s
+      fieldGradient: this.computeFieldGradient(),       // |∇φ|
+      fieldCurvature: this.computeFieldCurvature(),     // K_φ
+      senseIndex: this.computeSenseIndex()              // ξ_C (correlation)
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // PITOMADOM DISSONANCE GATE — (ported from rtl_attention.py)
+  // JSD-based dissonance computation for reasoning skips
+  // When dissonance is HIGH, attention can skip intermediate steps
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  computeDissonanceGate(forwardProbs, backwardProbs) {
+    // Total dissonance = weighted average:
+    // 0.5 × calendar_dissonance + 0.3 × JSD_norm + 0.2 × |ΔH_norm|
+
+    const calendarDissonance = clamp01((this.metrics?.calendarDrift || 0) * 2);
+
+    let jsdComponent = 0;
+    let entropyComponent = 0;
+
+    if (forwardProbs && backwardProbs && forwardProbs.length === backwardProbs.length) {
+      // Jensen-Shannon Divergence (bounded, symmetric)
+      // JSD(p,q) = 0.5 × KL(p||m) + 0.5 × KL(q||m), where m = (p+q)/2
+      const EPS = 1e-8;
+      const n = forwardProbs.length;
+
+      // Compute m = (p+q)/2
+      const m = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        m[i] = 0.5 * (forwardProbs[i] + backwardProbs[i]);
+      }
+
+      // KL(p||m) and KL(q||m)
+      let kl_pm = 0, kl_qm = 0;
+      for (let i = 0; i < n; i++) {
+        const p = forwardProbs[i] + EPS;
+        const q = backwardProbs[i] + EPS;
+        const mi = m[i] + EPS;
+        kl_pm += p * Math.log(p / mi);
+        kl_qm += q * Math.log(q / mi);
+      }
+      const jsd = 0.5 * kl_pm + 0.5 * kl_qm;
+      jsdComponent = clamp01(jsd / Math.LN2);  // Normalize by ln(2)
+
+      // Entropy difference (normalized)
+      const maxEntropy = Math.log(Math.max(n, 2));
+      let h_fwd = 0, h_bwd = 0;
+      for (let i = 0; i < n; i++) {
+        if (forwardProbs[i] > EPS) h_fwd -= forwardProbs[i] * Math.log(forwardProbs[i]);
+        if (backwardProbs[i] > EPS) h_bwd -= backwardProbs[i] * Math.log(backwardProbs[i]);
+      }
+      entropyComponent = clamp01(Math.abs(h_fwd - h_bwd) / maxEntropy);
+    }
+
+    // Combined dissonance
+    const totalDissonance = 0.5 * calendarDissonance + 0.3 * jsdComponent + 0.2 * entropyComponent;
+    return clamp01(totalDissonance);
+  }
+
+  computeDistancePenalty(dissonance) {
+    // High dissonance → low penalty → allow far jumps ("TimeTravel")
+    // Low dissonance → high penalty → force local attention
+    const basePenalty = 0.1;
+    return basePenalty * (1.0 - dissonance);
+  }
+
+  shouldReasoningSkip(dissonance) {
+    // Returns true if dissonance is high enough to allow reasoning skip
+    // threshold from cfg.tunnelThreshold
+    return dissonance > this.cfg.tunnelThreshold;
+  }
+
   step(px, py, pa, dt) {
     this.time += dt;
 
-    // CALENDAR CONFLICT (from PITOMADOM)
-    // Hebrew lunar year: 354 days (12 months × 29.5 days)
-    // Gregorian solar year: 365 days
-    // The 11-day difference creates phase drift that accumulates
-    // This drift is the WORMHOLE GATE — when calendars disagree, spacetime tears
-    
-    const hebrewPhase = phase(this.time, this.hebrewCycle);   // 0..1
-    const gregorianPhase = phase(this.time, this.gregorianCycle); // 0..1
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PITOMADOM CALENDAR CONFLICT — honest implementation
+    // Hebrew lunar calendar (Metonic cycle) vs Gregorian solar calendar
+    // The drift is REAL: it accumulates differently in leap vs common years
+    // When calendars disagree maximally, spacetime tears (wormhole gate opens)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Convert game time to "days" (1 game second = 1 day for dramatic effect)
+    // This makes the calendar drift visible during gameplay
+    const gameDays = this.time;
+
+    // Calculate phases using proper year lengths (Metonic + Gregorian leap logic)
+    const calState = {
+      hebrewYearStart: this.hebrewYearStart,
+      gregorianYearStart: this.gregorianYearStart,
+      currentHebrewYear: this.currentHebrewYear,
+      currentGregorianYear: this.currentGregorianYear
+    };
+    const cal = calculateCalendarPhases(gameDays, calState);
+
+    // Update state
+    this.hebrewYearStart = calState.hebrewYearStart;
+    this.gregorianYearStart = calState.gregorianYearStart;
+    this.currentHebrewYear = calState.currentHebrewYear;
+    this.currentGregorianYear = calState.currentGregorianYear;
 
     // raw drift: CIRCULAR phase difference (wrap-around at 0/1 boundary)
     // when phases diverge, the calendar conflict intensifies
-    // using min(d, 1-d) to handle the circular topology correctly
-    const d = Math.abs(hebrewPhase - gregorianPhase);
+    const d = Math.abs(cal.hebrewPhase - cal.gregorianPhase);
     const rawDrift = Math.min(d, 1 - d);  // circular metric: max drift is 0.5
-    
-    // scaled drift: multiply by configured intensity (default 11 for 11-day difference)
-    // this creates the "11-day drift tracking" from PITOMADOM
-    const drift = rawDrift * (this.cfg.calendarDrift / 11);
+
+    // Year length difference contributes to drift intensity
+    // In a Hebrew leap year, drift changes faster (30 extra days)
+    const yearLengthRatio = cal.hebrewYearLength / cal.gregorianYearLength;
+    const driftIntensity = 1 + Math.abs(1 - yearLengthRatio) * 2;
+
+    // scaled drift: multiply by configured intensity AND year length ratio
+    const drift = rawDrift * (this.cfg.calendarDrift / 11) * driftIntensity;
     this.metrics.calendarDrift = drift;
 
     // context token from motion/pose
@@ -511,8 +682,75 @@ function symKL(p, q) {
   return 0.5 * (a + b);
 }
 
-function phase(t, period) { 
-  return (t % period) / period; 
+function phase(t, period) {
+  return (t % period) / period;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PITOMADOM CALENDAR FUNCTIONS — honest implementation
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Hebrew year length (Metonic cycle implementation)
+ * 19-year cycle: years 3, 6, 8, 11, 14, 17, 19 are leap years (13 months)
+ * Year length varies: 353/354/355 (common) or 383/384/385 (leap)
+ * We use averages: 354 common, 384 leap
+ */
+function hebrewYearLength(yearInCycle) {
+  // yearInCycle is 1-19 (Metonic cycle position)
+  const cyclePos = ((yearInCycle - 1) % 19) + 1;
+  const leapYears = [3, 6, 8, 11, 14, 17, 19];
+  const isLeap = leapYears.includes(cyclePos);
+  // Common year ~354 days, leap year ~384 days (adds Adar I ~30 days)
+  return isLeap ? 384 : 354;
+}
+
+/**
+ * Gregorian year length (leap year calculation)
+ * Leap year: divisible by 4, except centuries unless divisible by 400
+ */
+function gregorianYearLength(year) {
+  if (year % 400 === 0) return 366;
+  if (year % 100 === 0) return 365;
+  if (year % 4 === 0) return 366;
+  return 365;
+}
+
+/**
+ * Calculate calendar phases with proper year lengths
+ * Returns {hebrewPhase, gregorianPhase, hebrewYear, gregorianYear}
+ */
+function calculateCalendarPhases(gameDays, state) {
+  // Update Hebrew calendar
+  let hebrewDays = gameDays - state.hebrewYearStart;
+  let hebrewYearLen = hebrewYearLength(state.currentHebrewYear);
+  while (hebrewDays >= hebrewYearLen) {
+    state.hebrewYearStart += hebrewYearLen;
+    state.currentHebrewYear++;
+    hebrewDays = gameDays - state.hebrewYearStart;
+    hebrewYearLen = hebrewYearLength(state.currentHebrewYear);
+  }
+  const hebrewPhase = hebrewDays / hebrewYearLen;
+
+  // Update Gregorian calendar
+  let gregDays = gameDays - state.gregorianYearStart;
+  let gregYearLen = gregorianYearLength(state.currentGregorianYear);
+  while (gregDays >= gregYearLen) {
+    state.gregorianYearStart += gregYearLen;
+    state.currentGregorianYear++;
+    gregDays = gameDays - state.gregorianYearStart;
+    gregYearLen = gregorianYearLength(state.currentGregorianYear);
+  }
+  const gregorianPhase = gregDays / gregYearLen;
+
+  return {
+    hebrewPhase,
+    gregorianPhase,
+    hebrewYear: state.currentHebrewYear,
+    gregorianYear: state.currentGregorianYear,
+    hebrewYearLength: hebrewYearLen,
+    gregorianYearLength: gregYearLen
+  };
 }
 
 function clamp01(x) { 

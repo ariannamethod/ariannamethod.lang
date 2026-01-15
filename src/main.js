@@ -155,6 +155,20 @@ function loop(now) {
     if (keys.has("d")) { vx += Math.cos(p.a + Math.PI/2); vy += Math.sin(p.a + Math.PI/2); }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DARK MATTER PHYSICS — scars bend trajectories
+  // Rejected injections leave gravitational scars that REPEL the observer
+  // This is defensive learning: the field avoids past mistakes
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (model.getDarkGradient) {
+    const darkGrad = model.getDarkGradient(p.x, p.y);
+    // gradient points FROM scar TO observer → positive = repulsion
+    // Scale by dark_gravity factor (default 0.5, configurable via DSL)
+    const darkStrength = field.cfg.darkGravity || 0.5;
+    vx += darkGrad.gx * darkStrength * 0.3;
+    vy += darkGrad.gy * darkStrength * 0.3;
+  }
+
   const vlen = Math.hypot(vx, vy) || 1;
   vx /= vlen; vy /= vlen;
 
@@ -183,6 +197,12 @@ function loop(now) {
   if (wh.didJump) {
     p.x = wh.x;
     p.y = wh.y;
+  }
+
+  // dark matter step: decay scars over time
+  // old mistakes fade, new lessons emerge
+  if (model.darkMatter?.step) {
+    model.darkMatter.step();
   }
 
   // update entities
@@ -250,7 +270,8 @@ function applyPresenceInjection(p, field, model, dt) {
     
     if (model.inject) {
       const result = model.inject(injectionTokens, {
-        drift: field.cfg.calendarDrift / 11,
+        // BUG FIX: use computed metrics.calendarDrift, not cfg constant
+        drift: field.metrics?.calendarDrift || 0,
         dissonance: field.metrics?.dissonance || 0,
       });
       
@@ -359,7 +380,8 @@ if (injectInput) {
         const tokens = tokenizer.encode(text);
         if (model.inject) {
           const result = model.inject(Array.from(tokens), {
-            drift: field.cfg.calendarDrift / 11,
+            // BUG FIX: use computed metrics.calendarDrift, not cfg constant
+            drift: metrics.calendarDrift,
             dissonance: metrics.dissonance,
           });
           

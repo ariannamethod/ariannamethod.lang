@@ -233,10 +233,15 @@ export class Renderer {
   _phrase(field, metrics, k = 3) {
     // build a small shard from local state
     const v = field.tokenizer.vocabSize();
-    const pick = () => field.tokenAtCell(
-      Math.floor(1 + Math.random() * (field.w - 2)),
-      Math.floor(1 + Math.random() * (field.h - 2))
-    ) || (Math.floor(Math.random() * v));
+    // BUG FIX: token 0 is valid! Don't use || which treats 0 as falsy
+    const pick = () => {
+      const tok = field.tokenAtCell(
+        Math.floor(1 + Math.random() * (field.w - 2)),
+        Math.floor(1 + Math.random() * (field.h - 2))
+      );
+      // CELL_EMPTY is -1, only fallback for that
+      return tok >= 0 ? tok : Math.floor(Math.random() * v);
+    };
 
     const words = [];
     for (let i = 0; i < k; i++) words.push(field.tokenizer.word(pick()));

@@ -49,31 +49,68 @@ export class DSL {
   apply(script) {
     const lines = String(script).split("\n");
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // MACRO SYSTEM — supports both single-line and multiline definitions
+    // Single: MACRO foo { PROPHECY 7; VELOCITY RUN }
+    // Multi:  MACRO foo {
+    //           PROPHECY 7
+    //           VELOCITY RUN
+    //         }
+    // ─────────────────────────────────────────────────────────────────────────
+    let macroAccum = null;  // { name: string, body: string[] } when inside multiline macro
+
     for (let raw of lines) {
       let line = raw.trim();
       if (!line || line.startsWith("#")) continue;
 
-      // ─────────────────────────────────────────────────────────────────────────
-      // MACRO SYSTEM
-      // ─────────────────────────────────────────────────────────────────────────
+      // If we're accumulating a multiline macro...
+      if (macroAccum) {
+        if (line === "}") {
+          // End of macro — save it
+          this.macros.set(macroAccum.name, macroAccum.body.join("\n"));
+          macroAccum = null;
+        } else {
+          // Strip trailing } if it's on same line as last command
+          if (line.endsWith("}")) {
+            macroAccum.body.push(line.slice(0, -1).trim());
+            this.macros.set(macroAccum.name, macroAccum.body.join("\n"));
+            macroAccum = null;
+          } else {
+            macroAccum.body.push(line);
+          }
+        }
+        continue;
+      }
 
       // macro expansion: @macroname
       if (line.startsWith("@")) {
         const macroName = line.slice(1).split(/\s+/)[0];
         const macroScript = this.macros.get(macroName);
         if (macroScript) {
-          this.apply(macroScript);
+          // Semicolons also work as line separators
+          this.apply(macroScript.replace(/;/g, '\n'));
         }
         continue;
       }
 
       // macro definition: MACRO name { ... }
       if (line.toUpperCase().startsWith("MACRO ")) {
-        const match = line.match(/MACRO\s+(\w+)\s*\{([\s\S]*?)\}/i);
-        if (match) {
-          this.macros.set(match[1], match[2]);
+        // Try single-line first: MACRO foo { cmd1; cmd2 }
+        const singleMatch = line.match(/MACRO\s+(\w+)\s*\{(.+)\}/i);
+        if (singleMatch) {
+          this.macros.set(singleMatch[1], singleMatch[2].trim());
+          continue;
         }
-        continue;
+
+        // Multiline start: MACRO foo { (no closing brace on this line)
+        const multiMatch = line.match(/MACRO\s+(\w+)\s*\{(.*)$/i);
+        if (multiMatch) {
+          macroAccum = {
+            name: multiMatch[1],
+            body: multiMatch[2].trim() ? [multiMatch[2].trim()] : []
+          };
+          continue;
+        }
       }
 
       const [cmd, ...rest] = line.split(/\s+/);
@@ -327,6 +364,62 @@ export class DSL {
       }
 
       // ─────────────────────────────────────────────────────────────────────────
+      // PITOMADOM COSMIC PHYSICS — Schumann resonance and temporal modes
+      // ─────────────────────────────────────────────────────────────────────────
+
+      else if (C === "SCHUMANN") {
+        // SCHUMANN 7.85 — set current Schumann frequency (7.77-7.87 Hz range)
+        const hz = parseFloat(arg);
+        if (hz > 0) {
+          this.field.cfg.schumannCurrent = clamp(hz, 7.27, 8.37);  // allow some range
+        }
+      }
+      else if (C === "SCHUMANN_MODULATION") {
+        // SCHUMANN_MODULATION 0.5 — how much Schumann affects field
+        this.field.cfg.schumannModulation = clamp01(parseFloat(arg));
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────
+      // PITOMADOM TEMPORAL SYMMETRY — prophecy/retrodiction modes
+      // ─────────────────────────────────────────────────────────────────────────
+
+      else if (C === "TEMPORAL_MODE") {
+        // TEMPORAL_MODE prophecy|retrodiction|symmetric
+        const mode = arg.toLowerCase();
+        if (this.field.model && this.field.model.setTemporalMode) {
+          this.field.model.setTemporalMode(mode);
+        }
+      }
+      else if (C === "TEMPORAL_ALPHA") {
+        // TEMPORAL_ALPHA 0.7 — direct alpha control (0=past, 1=future)
+        const alpha = clamp01(parseFloat(arg));
+        if (this.field.model && this.field.model.setTemporalAlpha) {
+          this.field.model.setTemporalAlpha(alpha);
+        }
+      }
+      else if (C === "RTL_MODE") {
+        // RTL_MODE on|off — Hebrew positional encoding (right-to-left)
+        const isOn = (arg.toUpperCase() === "ON" || arg === "1" || arg.toUpperCase() === "TRUE");
+        if (this.field.model && this.field.model.setRTLMode) {
+          this.field.model.setRTLMode(isOn);
+        }
+      }
+      else if (C === "PROPHECY_MODE") {
+        // Alias: PROPHECY_MODE on = TEMPORAL_MODE prophecy
+        if (this.field.model && this.field.model.setTemporalMode) {
+          const isOn = (arg.toUpperCase() === "ON" || arg === "1");
+          this.field.model.setTemporalMode(isOn ? 'prophecy' : 'symmetric');
+        }
+      }
+      else if (C === "RETRODICTION_MODE") {
+        // Alias: RETRODICTION_MODE on = TEMPORAL_MODE retrodiction
+        if (this.field.model && this.field.model.setTemporalMode) {
+          const isOn = (arg.toUpperCase() === "ON" || arg === "1");
+          this.field.model.setTemporalMode(isOn ? 'retrodiction' : 'symmetric');
+        }
+      }
+
+      // ─────────────────────────────────────────────────────────────────────────
       // UTILITY
       // ─────────────────────────────────────────────────────────────────────────
 
@@ -485,6 +578,20 @@ export class DSL {
       lines.push(`# DarkMatter Pack`);
       lines.push(`MODE DARKMATTER`);
       lines.push(`GRAVITY DARK ${(cfg.darkGravity || 0.5).toFixed(2)}`);
+    }
+
+    // PITOMADOM Cosmic Physics
+    lines.push(`# PITOMADOM Cosmic Physics`);
+    lines.push(`SCHUMANN ${(cfg.schumannCurrent || 7.83).toFixed(2)}`);
+    lines.push(`SCHUMANN_MODULATION ${(cfg.schumannModulation || 0.3).toFixed(2)}`);
+
+    // PITOMADOM Temporal Symmetry
+    const model = this.field.model;
+    if (model) {
+      lines.push(`# PITOMADOM Temporal Symmetry`);
+      lines.push(`TEMPORAL_MODE ${model.temporalMode || 'symmetric'}`);
+      lines.push(`TEMPORAL_ALPHA ${(model.temporalAlpha || 0.5).toFixed(2)}`);
+      lines.push(`RTL_MODE ${model.useRTLPositions ? 'on' : 'off'}`);
     }
 
     return lines.join("\n");

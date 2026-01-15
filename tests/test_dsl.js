@@ -332,6 +332,121 @@ async function runTests() {
     assert(cfg1.wormhole === cfg2.wormhole, 'wormhole should match');
   });
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  console.log('\n10. Macro System\n');
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  // Minimal macro parser for testing (matches dsl.js logic)
+  function parseDSLWithMacros(script) {
+    const macros = new Map();
+    const commands = [];
+    const lines = String(script).split("\n");
+    let macroAccum = null;
+
+    for (let raw of lines) {
+      let line = raw.trim();
+      if (!line || line.startsWith("#")) continue;
+
+      // Accumulating multiline macro
+      if (macroAccum) {
+        if (line === "}") {
+          macros.set(macroAccum.name, macroAccum.body.join("\n"));
+          macroAccum = null;
+        } else if (line.endsWith("}")) {
+          macroAccum.body.push(line.slice(0, -1).trim());
+          macros.set(macroAccum.name, macroAccum.body.join("\n"));
+          macroAccum = null;
+        } else {
+          macroAccum.body.push(line);
+        }
+        continue;
+      }
+
+      // Macro expansion
+      if (line.startsWith("@")) {
+        const macroName = line.slice(1).split(/\s+/)[0];
+        const macroScript = macros.get(macroName);
+        if (macroScript) {
+          const expanded = parseDSLWithMacros(macroScript.replace(/;/g, '\n'));
+          commands.push(...expanded.commands);
+        }
+        continue;
+      }
+
+      // Single-line macro
+      if (line.toUpperCase().startsWith("MACRO ")) {
+        const singleMatch = line.match(/MACRO\s+(\w+)\s*\{(.+)\}/i);
+        if (singleMatch) {
+          macros.set(singleMatch[1], singleMatch[2].trim());
+          continue;
+        }
+        const multiMatch = line.match(/MACRO\s+(\w+)\s*\{(.*)$/i);
+        if (multiMatch) {
+          macroAccum = {
+            name: multiMatch[1],
+            body: multiMatch[2].trim() ? [multiMatch[2].trim()] : []
+          };
+          continue;
+        }
+      }
+
+      commands.push(line.toUpperCase().split(/\s+/)[0]);
+    }
+
+    return { macros, commands };
+  }
+
+  test('single-line macro definition and expansion', () => {
+    const result = parseDSLWithMacros(`
+      MACRO rush { PROPHECY 12; VELOCITY RUN }
+      @rush
+    `);
+    assert(result.macros.has('rush'), 'macro should be defined');
+    assert(result.commands.includes('PROPHECY'), 'should expand to PROPHECY');
+    assert(result.commands.includes('VELOCITY'), 'should expand to VELOCITY');
+  });
+
+  test('multiline macro definition', () => {
+    const result = parseDSLWithMacros(`
+      MACRO chaos {
+        PROPHECY 1
+        DESTINY 0.9
+        VELOCITY RUN
+      }
+      @chaos
+    `);
+    assert(result.macros.has('chaos'), 'multiline macro should be defined');
+    assert(result.commands.length === 3, `should have 3 commands, got ${result.commands.length}`);
+  });
+
+  test('multiline macro with closing brace on last line', () => {
+    const result = parseDSLWithMacros(`
+      MACRO quick {
+        PROPHECY 3
+        WORMHOLE 0.5 }
+      @quick
+    `);
+    assert(result.macros.has('quick'), 'macro should be defined');
+    assert(result.commands.includes('PROPHECY'), 'should expand PROPHECY');
+    assert(result.commands.includes('WORMHOLE'), 'should expand WORMHOLE');
+  });
+
+  test('macro with semicolon separators', () => {
+    const result = parseDSLWithMacros(`
+      MACRO fast { PROPHECY 1; DESTINY 1; WORMHOLE 1 }
+      @fast
+    `);
+    assert(result.commands.length === 3, `should have 3 commands, got ${result.commands.length}`);
+  });
+
+  test('undefined macro expansion is ignored', () => {
+    const result = parseDSLWithMacros(`
+      @nonexistent
+      PROPHECY 7
+    `);
+    assert(result.commands.length === 1, 'should only have PROPHECY');
+  });
+
   // ═══════════════════════════════════════════════════════════════════════════
   // Summary
   // ═══════════════════════════════════════════════════════════════════════════
