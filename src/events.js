@@ -1,8 +1,8 @@
 // events.js — Async Core for ariannamethod.lang
-// "the field breathes async — no external observers yet"
+// "the field breathes async"
 //
-// Lang должен быть async ИЗНУТРИ, а не через навешанных наблюдателей.
-// LEO/STANLEY/HAZE придут ПОТОМ, когда мир устоится.
+// Архитектурный принцип: lang async изнутри.
+// Это НЕ внешние наблюдатели — это сам field emit events.
 //
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -22,12 +22,8 @@ export const FieldEvent = {
   DISSONANCE_HIGH: 'field:dissonance_high',
 
   // Entity events
-  ENTITY_INTENTION_CHANGE: 'entity:intention',
   SHADOW_APPROACH: 'entity:shadow_approach',
   FACE_EMERGE: 'entity:face_emerge',
-
-  // Geometry events
-  WALL_RESONATE: 'geometry:wall_resonate',
 
   // Dark matter events
   SCAR_DEPOSIT: 'darkmatter:scar',
@@ -37,9 +33,6 @@ export const FieldEvent = {
   // Temporal events
   TEMPORAL_MODE_CHANGE: 'temporal:mode',
   CALENDAR_CONFLICT: 'temporal:conflict',
-
-  // Cosmic events
-  SCHUMANN_CHANGE: 'cosmic:schumann',
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -51,22 +44,14 @@ export class EventBus {
     this.listeners = new Map();
   }
 
-  /**
-   * Subscribe to an event
-   */
   on(event, handler) {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, []);
     }
     this.listeners.get(event).push(handler);
-
-    // return unsubscribe function
     return () => this.off(event, handler);
   }
 
-  /**
-   * Subscribe once
-   */
   once(event, handler) {
     const wrapper = (data) => {
       this.off(event, wrapper);
@@ -75,9 +60,6 @@ export class EventBus {
     return this.on(event, wrapper);
   }
 
-  /**
-   * Unsubscribe
-   */
   off(event, handler) {
     const handlers = this.listeners.get(event);
     if (handlers) {
@@ -86,33 +68,23 @@ export class EventBus {
     }
   }
 
-  /**
-   * Emit event (sync)
-   */
   emit(event, data = {}) {
     const handlers = this.listeners.get(event) || [];
     handlers.forEach(h => h(data));
   }
 
-  /**
-   * Emit event and wait for all handlers
-   */
   async emitAsync(event, data = {}) {
     const handlers = this.listeners.get(event) || [];
     await Promise.all(handlers.map(h => h(data)));
   }
 
-  /**
-   * Clear all listeners
-   */
   clear() {
     this.listeners.clear();
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ASYNC FIELD — promisified wrapper for field.step()
-// field сам emit events изнутри
+// ASYNC FIELD — promisified wrapper, field emits events изнутри
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export class AsyncField {
@@ -121,23 +93,13 @@ export class AsyncField {
     this.bus = bus;
   }
 
-  /**
-   * Async step with event emission
-   */
   async step(px, py, angle, dt) {
-    // capture before state
     const before = this.field.metrics ? { ...this.field.metrics } : {};
-
-    // step field
     const result = this.field.step(px, py, angle, dt);
-
-    // capture after state
     const after = this.field.metrics ? { ...this.field.metrics } : {};
 
-    // emit STEP event
-    this.bus.emit(FieldEvent.STEP, { before, after, result, field: this.field });
+    this.bus.emit(FieldEvent.STEP, { before, after, result });
 
-    // emit threshold events based on changes
     if (after.pain > 0.7 && (before.pain || 0) <= 0.7) {
       this.bus.emit(FieldEvent.PAIN_SPIKE, { pain: after.pain });
     }
@@ -146,11 +108,6 @@ export class AsyncField {
       this.bus.emit(FieldEvent.EMERGENCE_SPIKE, { emergence: after.emergence });
     }
 
-    if (after.dissonance > 0.6 && (before.dissonance || 0) <= 0.6) {
-      this.bus.emit(FieldEvent.DISSONANCE_HIGH, { dissonance: after.dissonance });
-    }
-
-    // wormhole jump?
     if (result?.didJump) {
       this.bus.emit(FieldEvent.JUMP, { from: { x: px, y: py }, to: result });
     }
@@ -158,9 +115,6 @@ export class AsyncField {
     return result;
   }
 
-  /**
-   * Wait for specific event with timeout
-   */
   waitFor(event, timeout = 5000) {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -178,9 +132,3 @@ export class AsyncField {
     });
   }
 }
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// NOTE: LEO/STANLEY/HAZE observers will come LATER
-// когда мир lang устоится — тогда добавим external watchers
-// пока что — только core async infrastructure
-// ═══════════════════════════════════════════════════════════════════════════════
