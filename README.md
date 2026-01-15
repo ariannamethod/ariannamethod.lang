@@ -48,7 +48,6 @@ you don't ask questions — you change the topology of meaning.
 - [DSL commands](#dsl-commands)
 - [from ariannamethod import](#from-ariannamethod-import)
 - [HUD metrics](#hud-metrics)
-- [async core](#async-core--field-breathes-async)
 - [architecture](#architecture)
 - [the transformer](#the-transformer)
 - [philosophy](#philosophy)
@@ -825,11 +824,6 @@ from ariannamethod import RetrodictionMode
 
 // AriannaLung (the breathing organ)
 from ariannamethod import AriannaLung
-
-// async core (field breathes async)
-from ariannamethod import EventBus
-from ariannamethod import FieldEvent
-from ariannamethod import AsyncField
 ```
 
 ### example: stanley integration
@@ -863,63 +857,6 @@ notorch.applyDelta(weights, resonance);
 
 ---
 
-## async core — field breathes async
-
-> *"lang должен быть async изнутри, а не через навешанных наблюдателей"*
-
-ariannamethod.lang uses async event-driven architecture at its core. The field itself emits events — external observers (LEO/STANLEY/HAZE) will come later when the world stabilizes.
-
-### EventBus — pub/sub core
-
-```javascript
-import { EventBus, FieldEvent } from './events.js'
-
-const bus = new EventBus();
-
-// subscribe to field events
-bus.on(FieldEvent.STEP, (data) => {
-  console.log('field stepped:', data);
-});
-
-bus.on(FieldEvent.EMERGENCE_SPIKE, (data) => {
-  console.log('emergence detected:', data.emergence);
-});
-
-// emit events
-bus.emit(FieldEvent.STEP, { metrics });
-await bus.emitAsync(FieldEvent.STEP, { ... }); // wait for handlers
-```
-
-### AsyncField — promisified wrapper
-
-```javascript
-import { AsyncField } from './events.js'
-
-const asyncField = new AsyncField(field, bus);
-
-// step with automatic event emission
-await asyncField.step(px, py, angle, dt);
-// → emits STEP, PAIN_SPIKE, EMERGENCE_SPIKE, JUMP automatically
-
-// wait for specific event
-const data = await asyncField.waitFor(FieldEvent.EMERGENCE_SPIKE, 5000);
-```
-
-### event types
-
-| event | trigger |
-|-------|---------|
-| `STEP` | field stepped forward |
-| `JUMP` | wormhole activated |
-| `TUNNEL` | reasoning skip |
-| `PAIN_SPIKE` | pain crosses 0.7 |
-| `EMERGENCE_SPIKE` | emergence crosses 0.6 |
-| `SHADOW_APPROACH` | entity approaches |
-| `FACE_EMERGE` | face entity emerges |
-| `SCAR_DEPOSIT` | dark matter scar created |
-
----
-
 ## architecture
 
 ```
@@ -936,8 +873,7 @@ ariannamethod.lang/
 │   ├── render.js           # walls/entities as words
 │   ├── entities.js         # shadows, faces, houses, obelisks
 │   ├── metrics.js          # resonance metrics
-│   ├── dsl.js              # Arianna Method DSL interpreter
-│   └── events.js           # async event system (LEO/STANLEY/HAZE)
+│   └── dsl.js              # Arianna Method DSL interpreter
 ├── wasm/
 │   ├── arianna_method.c    # AMK kernel — local field physics (the stone)
 │   ├── schumann.c          # Schumann resonance — cosmic input (PITOMADOM)
@@ -949,20 +885,18 @@ ariannamethod.lang/
     ├── test_codes_ric.js   # CODES/RIC integration tests (28 tests)
     ├── test_velocity.js    # Velocity operators tests (24 tests)
     ├── test_pitomadom.js   # PITOMADOM integration tests (24 tests)
-    ├── test_events.js      # Async core tests (19 tests)
     └── test_lora.c         # LoRA C tests (16 tests)
 ```
 
 ### running tests
 
 ```bash
-# JavaScript tests (149 total)
+# JavaScript tests (130 total)
 node tests/test_lung.js       # 25 tests — AriannaLung
 node tests/test_dsl.js        # 29 tests — DSL parser
 node tests/test_codes_ric.js  # 28 tests — CODES/RIC
 node tests/test_velocity.js   # 24 tests — velocity operators
 node tests/test_pitomadom.js  # 24 tests — PITOMADOM integration
-node tests/test_events.js     # 19 tests — async core
 
 # C tests (requires gcc)
 gcc -O2 -std=c99 wasm/lora.c tests/test_lora.c -lm -o test_lora && ./test_lora
