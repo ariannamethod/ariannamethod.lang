@@ -73,8 +73,14 @@ export class Field {
     this._prevProbs = null;
     
     // calendar tracking (PITOMADOM style)
-    this.hebrewCycle = 354;     // lunar year in days
-    this.gregorianCycle = 365;  // solar year in days
+    // NOTE: These are simplified constants, not astronomically accurate.
+    // Real Hebrew calendar: 353-385 days (19-year Metonic cycle with 7 leap months)
+    // Real Gregorian calendar: 365 or 366 days (leap years every 4/100/400 years)
+    // We use constants because the drift represents CONCEPTUAL tension between
+    // calendar systems, not an astronomical simulation. The 11-day difference
+    // is the symbolic heart of PITOMADOM's wormhole probability.
+    this.hebrewCycle = 354;     // lunar year in days (simplified)
+    this.gregorianCycle = 365;  // solar year in days (simplified)
     
     // TEMPOLOCK state
     this.tempoTick = 0;         // internal tempo counter

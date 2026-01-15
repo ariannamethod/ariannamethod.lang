@@ -31,6 +31,10 @@
 #include <math.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #ifndef LORA_CLAMP
 #define LORA_CLAMP(x,a,b) ((x)<(a)?(a):((x)>(b)?(b):(x)))
 #endif

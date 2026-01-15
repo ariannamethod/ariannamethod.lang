@@ -99,7 +99,9 @@ export class AriannaLung {
       
       const scores = new Float32Array(this.ctx);
 
-      // attention scores vs all keys (with causal mask implied by focus)
+      // attention scores vs all keys
+      // NOTE: No causal mask — we attend to ALL positions (past and future)
+      // This is intentional: the field sees everything, time is not strictly linear
       for (let t = 0; t < this.ctx; t++) {
         const xt = X.subarray(t * this.d, (t + 1) * this.d);
         const k = matVec(this.Wk[h], this.headDim, this.d, xt);
@@ -195,12 +197,16 @@ export class AriannaLung {
     };
   }
 
-  // One SGD step on cross-entropy. Tiny + crude on purpose.
-  // notorch: resonance updates through experience, not just backprop
+  // HONEST COMMENT: This IS SGD (stochastic gradient descent) on output weights.
+  // The "notorch" philosophy doesn't mean "no backprop" — it means:
+  //   1. We DO use SGD for Wo (output projection) — this is standard backprop
+  //   2. We ALSO have emergent resonance updates that are NOT backprop
+  // The combination creates a hybrid: gradient-based + experience-based learning.
+  // "notorch" = we don't need PyTorch's full autograd graph, just this minimal update.
   trainStep(ctxIds, targetId) {
     const { probs } = this.forward(ctxIds);
 
-    // gradient on logits: dL/dlogits = probs - onehot(target)
+    // Standard cross-entropy gradient: dL/dlogits = probs - onehot(target)
     const grad = new Float32Array(this.vocabSize);
     for (let i = 0; i < this.vocabSize; i++) grad[i] = probs[i];
     grad[targetId] -= 1;
@@ -212,7 +218,8 @@ export class AriannaLung {
       console.warn('[AriannaLung] trainStep() called before forward() — skipping update');
       return;
     }
-    
+
+    // SGD update on output weights Wo (yes, this is backprop)
     for (let j = 0; j < this.vocabSize; j++) {
       const gj = grad[j];
       for (let i = 0; i < this.d; i++) {
@@ -220,8 +227,9 @@ export class AriannaLung {
       }
     }
 
-    // NOTORCH: update resonance based on prediction accuracy (emergent learning)
-    // weights are experiences, not parameters
+    // EMERGENT PART (this is the non-backprop "notorch" addition):
+    // Resonance updates based on prediction accuracy
+    // These weights represent experience/memory, not just optimization
     const wasCorrect = probs[targetId] > 0.1;
     if (wasCorrect) {
       // boost resonance on correct prediction

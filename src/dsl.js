@@ -55,6 +55,9 @@ export class DSL {
 
       // ─────────────────────────────────────────────────────────────────────────
       // MACRO SYSTEM
+      // LIMITATION: Macros must be defined on a single line!
+      // Use semicolons to separate commands: MACRO foo { CMD1; CMD2; CMD3 }
+      // Multiline macro definitions are NOT supported (parser limitation)
       // ─────────────────────────────────────────────────────────────────────────
 
       // macro expansion: @macroname
@@ -62,16 +65,18 @@ export class DSL {
         const macroName = line.slice(1).split(/\s+/)[0];
         const macroScript = this.macros.get(macroName);
         if (macroScript) {
-          this.apply(macroScript);
+          // Replace semicolons with newlines for execution
+          this.apply(macroScript.replace(/;/g, '\n'));
         }
         continue;
       }
 
       // macro definition: MACRO name { ... }
+      // Must be on single line: MACRO myname { PROPHECY 7; VELOCITY RUN }
       if (line.toUpperCase().startsWith("MACRO ")) {
         const match = line.match(/MACRO\s+(\w+)\s*\{([\s\S]*?)\}/i);
         if (match) {
-          this.macros.set(match[1], match[2]);
+          this.macros.set(match[1], match[2].trim());
         }
         continue;
       }

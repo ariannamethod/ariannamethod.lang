@@ -198,7 +198,8 @@ static void update_effective_temp(void) {
     case AM_VEL_BACKWARD:
       G.effective_temp = base * 0.7f;  // structural
       G.time_direction = -1.0f;
-      G.temporal_debt += 0.01f;        // accumulate debt
+      // NOTE: temporal_debt accumulation moved to am_step()
+      // debt grows while moving backward, not when setting velocity mode
       break;
     default:
       G.effective_temp = base;
@@ -629,8 +630,19 @@ void am_step(float dt) {
   // clamp debt to prevent runaway
   if (G.debt > 100.0f) G.debt = 100.0f;
 
-  // temporal debt decay (slower)
-  G.temporal_debt *= 0.9995f;
+  // temporal debt: accumulates while moving backward, decays otherwise
+  // the debt is proportional to time spent in backward movement
+  if (G.velocity_mode == AM_VEL_BACKWARD && dt > 0.0f) {
+    // accumulate debt proportional to time spent going backward
+    // 0.01 per second of backward movement (dt is in seconds)
+    G.temporal_debt += 0.01f * dt;
+  } else {
+    // decay when not moving backward (slower than regular debt)
+    G.temporal_debt *= 0.9995f;
+  }
+
+  // clamp temporal debt
+  if (G.temporal_debt > 10.0f) G.temporal_debt = 10.0f;
 }
 
 #ifdef __cplusplus
