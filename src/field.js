@@ -262,13 +262,157 @@ export class Field {
 
   updateGlitchIntensity() {
     const pas = this.computePAS();
-    const targetGlitch = pas < this.cfg.pasThreshold 
-      ? (this.cfg.pasThreshold - pas) * 2.5 
+    const targetGlitch = pas < this.cfg.pasThreshold
+      ? (this.cfg.pasThreshold - pas) * 2.5
       : 0;
-    
+
     // Smooth transition
     this.cfg.glitchIntensity = 0.9 * this.cfg.glitchIntensity + 0.1 * targetGlitch;
     return this.cfg.glitchIntensity;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // PITOMADOM TNFR METRICS — Field Coherence (ported from field_coherence.py)
+  // Global Coherence (Φ_s): field alignment measure
+  // Sense Index: psychological coherence (arousal × resonance)
+  // Field Tetrad: (Φ_s, |∇φ|, K_φ, ξ_C) - gradient, curvature, correlation
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  computeGlobalCoherence() {
+    // Φ_s = weighted average of:
+    // - resonance field alignment (how synchronized)
+    // - entropy negation (low entropy = high coherence)
+    // - presence field strength
+    if (!this.metrics) return 0.5;
+
+    const resonance = this.metrics.resonanceField || 0.5;
+    const entropyNeg = 1 - clamp01(this.metrics.entropy / 3);
+    const presence = clamp01(this.metrics.presencePulse);
+
+    // Φ_s = 0.4 × resonance + 0.35 × (1-entropy_norm) + 0.25 × presence
+    const phi_s = 0.4 * resonance + 0.35 * entropyNeg + 0.25 * presence;
+    return clamp01(phi_s);
+  }
+
+  computeFieldGradient() {
+    // |∇φ| = rate of change of resonance field
+    // approximated by tracking previous resonance
+    if (!this.metrics) return 0;
+
+    if (this._prevResonance === undefined) {
+      this._prevResonance = this.metrics.resonanceField || 0.5;
+      return 0;
+    }
+
+    const grad = Math.abs(this.metrics.resonanceField - this._prevResonance);
+    this._prevResonance = this.metrics.resonanceField;
+    return grad;
+  }
+
+  computeFieldCurvature() {
+    // K_φ = second derivative (rate of gradient change)
+    if (!this.metrics) return 0;
+
+    const currentGrad = this.computeFieldGradient();
+    if (this._prevGradient === undefined) {
+      this._prevGradient = currentGrad;
+      return 0;
+    }
+
+    const curvature = Math.abs(currentGrad - this._prevGradient);
+    this._prevGradient = currentGrad;
+    return curvature;
+  }
+
+  computeSenseIndex() {
+    // Sense Index = coherence × arousal × (1 - pain)
+    // High when: coherent field + active engagement + minimal suffering
+    if (!this.metrics) return 0.5;
+
+    const phi_s = this.computeGlobalCoherence();
+    const arousal = this.metrics.arousal || 0.5;
+    const antiPain = 1 - (this.metrics.pain || 0);
+
+    // Sense = Φ_s × √arousal × (1-pain)
+    const sense = phi_s * Math.sqrt(arousal) * antiPain;
+    return clamp01(sense);
+  }
+
+  getFieldTetrad() {
+    // Return full TNFR field tetrad (Φ_s, |∇φ|, K_φ, ξ_C)
+    return {
+      globalCoherence: this.computeGlobalCoherence(),  // Φ_s
+      fieldGradient: this.computeFieldGradient(),       // |∇φ|
+      fieldCurvature: this.computeFieldCurvature(),     // K_φ
+      senseIndex: this.computeSenseIndex()              // ξ_C (correlation)
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // PITOMADOM DISSONANCE GATE — (ported from rtl_attention.py)
+  // JSD-based dissonance computation for reasoning skips
+  // When dissonance is HIGH, attention can skip intermediate steps
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  computeDissonanceGate(forwardProbs, backwardProbs) {
+    // Total dissonance = weighted average:
+    // 0.5 × calendar_dissonance + 0.3 × JSD_norm + 0.2 × |ΔH_norm|
+
+    const calendarDissonance = clamp01((this.metrics?.calendarDrift || 0) * 2);
+
+    let jsdComponent = 0;
+    let entropyComponent = 0;
+
+    if (forwardProbs && backwardProbs && forwardProbs.length === backwardProbs.length) {
+      // Jensen-Shannon Divergence (bounded, symmetric)
+      // JSD(p,q) = 0.5 × KL(p||m) + 0.5 × KL(q||m), where m = (p+q)/2
+      const EPS = 1e-8;
+      const n = forwardProbs.length;
+
+      // Compute m = (p+q)/2
+      const m = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        m[i] = 0.5 * (forwardProbs[i] + backwardProbs[i]);
+      }
+
+      // KL(p||m) and KL(q||m)
+      let kl_pm = 0, kl_qm = 0;
+      for (let i = 0; i < n; i++) {
+        const p = forwardProbs[i] + EPS;
+        const q = backwardProbs[i] + EPS;
+        const mi = m[i] + EPS;
+        kl_pm += p * Math.log(p / mi);
+        kl_qm += q * Math.log(q / mi);
+      }
+      const jsd = 0.5 * kl_pm + 0.5 * kl_qm;
+      jsdComponent = clamp01(jsd / Math.LN2);  // Normalize by ln(2)
+
+      // Entropy difference (normalized)
+      const maxEntropy = Math.log(Math.max(n, 2));
+      let h_fwd = 0, h_bwd = 0;
+      for (let i = 0; i < n; i++) {
+        if (forwardProbs[i] > EPS) h_fwd -= forwardProbs[i] * Math.log(forwardProbs[i]);
+        if (backwardProbs[i] > EPS) h_bwd -= backwardProbs[i] * Math.log(backwardProbs[i]);
+      }
+      entropyComponent = clamp01(Math.abs(h_fwd - h_bwd) / maxEntropy);
+    }
+
+    // Combined dissonance
+    const totalDissonance = 0.5 * calendarDissonance + 0.3 * jsdComponent + 0.2 * entropyComponent;
+    return clamp01(totalDissonance);
+  }
+
+  computeDistancePenalty(dissonance) {
+    // High dissonance → low penalty → allow far jumps ("TimeTravel")
+    // Low dissonance → high penalty → force local attention
+    const basePenalty = 0.1;
+    return basePenalty * (1.0 - dissonance);
+  }
+
+  shouldReasoningSkip(dissonance) {
+    // Returns true if dissonance is high enough to allow reasoning skip
+    // threshold from cfg.tunnelThreshold
+    return dissonance > this.cfg.tunnelThreshold;
   }
 
   step(px, py, pa, dt) {

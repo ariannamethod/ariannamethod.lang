@@ -42,6 +42,12 @@ extern "C" {
 // future packs: 0x08, 0x10, ...
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// COSMIC PHYSICS — Schumann resonance is in separate schumann.c
+// See schumann.c for Earth-ionosphere coupling (PITOMADOM integration)
+// AMK kernel handles only local field physics; cosmic input is external
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // VELOCITY MODES — movement IS language
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -119,6 +125,10 @@ typedef struct {
   // Dark matter pack state (only meaningful when AM_PACK_DARKMATTER enabled)
   float dark_gravity;       // influence of dark mass (0..1)
   int   antidote_mode;      // 0=AUTO, 1=HARD
+
+  // Cosmic physics coupling (actual state is in schumann.c)
+  // AMK just stores reference values for JS-side access
+  float cosmic_coherence_ref;   // cached from schumann.c
 
 } AM_State;
 
@@ -264,6 +274,9 @@ void am_init(void) {
   // dark matter defaults
   G.dark_gravity = 0.5f;
   G.antidote_mode = 0;
+
+  // cosmic physics coupling (actual values come from schumann.c)
+  G.cosmic_coherence_ref = 0.5f;
 }
 
 // enable/disable packs
@@ -559,6 +572,16 @@ int am_exec(const char* script) {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // COSMIC PHYSICS COMMANDS — see schumann.c for full implementation
+    // AMK kernel only stores reference for JS-side access
+    // ─────────────────────────────────────────────────────────────────────────
+
+    else if (!strcmp(t, "COSMIC_COHERENCE")) {
+      // COSMIC_COHERENCE 0.8 — set reference coherence (for JS sync)
+      G.cosmic_coherence_ref = clamp01(safe_atof(arg));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // UNKNOWN COMMANDS — ignored intentionally (future-proof + vibe)
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -585,7 +608,7 @@ int am_take_jump(void) {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // WASM-SAFE STATE COPY — deterministic, ABI-stable interface
-// writes 20 scalars in fixed order (extended from original 13)
+// writes 24 scalars in fixed order (extended from original 20)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 int am_copy_state(float* out) {
@@ -615,6 +638,13 @@ int am_copy_state(float* out) {
   out[18] = (float)G.packs_enabled;
   out[19] = (float)G.chordlock_on;  // sample pack state
 
+  // Cosmic physics reference (index 20, actual state in schumann.c)
+  out[20] = G.cosmic_coherence_ref;
+  // Slots 21-23 reserved for future use
+  out[21] = 0.0f;
+  out[22] = 0.0f;
+  out[23] = 0.0f;
+
   return 0;
 }
 
@@ -643,6 +673,21 @@ void am_step(float dt) {
 
   // clamp temporal debt
   if (G.temporal_debt > 10.0f) G.temporal_debt = 10.0f;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // COSMIC COHERENCE MODULATION (reference from schumann.c)
+  // High cosmic coherence → faster healing (tension/dissonance decay)
+  // Actual Schumann state is managed by schumann.c; here we use the ref value
+  // ─────────────────────────────────────────────────────────────────────────────
+  if (G.cosmic_coherence_ref > 0.0f && dt > 0.0f) {
+    // coherence_factor: 1.0 at max coherence, 0.5 at zero coherence
+    float coherence_factor = 0.5f + 0.5f * G.cosmic_coherence_ref;
+
+    // tension/dissonance decay faster with high coherence
+    float heal_rate = 0.998f - (0.003f * coherence_factor);
+    G.tension *= heal_rate;
+    G.dissonance *= heal_rate;
+  }
 }
 
 #ifdef __cplusplus

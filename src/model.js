@@ -57,6 +57,19 @@ export class AriannaLung {
     this._cachedY = null;
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // PITOMADOM TEMPORAL SYMMETRY — bidirectional attention with mode blending
+    // Prophecy mode (alpha > 0.5): emphasize future (left in RTL)
+    // Retrodiction mode (alpha < 0.5): emphasize past (right in RTL)
+    // Symmetric mode (alpha = 0.5): balanced past/future
+    // ═══════════════════════════════════════════════════════════════════════════
+    this.temporalMode = 'symmetric';  // 'prophecy', 'retrodiction', 'symmetric'
+    this.temporalAlpha = 0.5;         // mixing weight: 0=past, 1=future
+    this.useRTLPositions = false;     // true = positions increase right-to-left (Hebrew mode)
+
+    // RTL positional encoding (reversed)
+    this.P_rtl = this._buildPositionalEncoding(ctx, dModel, true);
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // DARK MATTER — invisible learning / gravitational memory
     // What the field rejects as command still becomes mass
     // Scars persist and bend trajectories
@@ -64,27 +77,33 @@ export class AriannaLung {
     this.darkMatter = new DarkMatter(vocabSize);
   }
 
-  _buildPositionalEncoding(ctx, d) {
+  _buildPositionalEncoding(ctx, d, rtl = false) {
     const P = new Float32Array(ctx * d);
     for (let pos = 0; pos < ctx; pos++) {
+      // RTL: position 0 = rightmost (present), increases toward left (future)
+      // LTR: position 0 = leftmost (oldest), increases toward right (newest)
+      const effectivePos = rtl ? (ctx - 1 - pos) : pos;
       for (let i = 0; i < d; i++) {
-        const angle = pos / Math.pow(10000, (2 * Math.floor(i / 2)) / d);
+        const angle = effectivePos / Math.pow(10000, (2 * Math.floor(i / 2)) / d);
         P[pos * d + i] = (i % 2 === 0) ? Math.sin(angle) : Math.cos(angle);
       }
     }
     return P;
   }
 
-  // forward: returns {probs, entropy, perplexity, attentionMap, resonanceField}
+  // forward: returns {probs, entropy, perplexity, attentionMap, resonanceField, temporalAsymmetry}
   forward(ctxIds) {
     const ids = padOrTrim(ctxIds, this.ctx, 0);
+
+    // Select positional encoding based on RTL mode
+    const P = this.useRTLPositions ? this.P_rtl : this.P;
 
     // build token vectors with positional encoding
     const X = new Float32Array(this.ctx * this.d);
     for (let t = 0; t < this.ctx; t++) {
       const id = ids[t];
       for (let i = 0; i < this.d; i++) {
-        X[t * this.d + i] = this.E[id * this.d + i] + this.P[t * this.d + i];
+        X[t * this.d + i] = this.E[id * this.d + i] + P[t * this.d + i];
       }
     }
 
@@ -102,13 +121,31 @@ export class AriannaLung {
       // attention scores vs all keys
       // NOTE: No causal mask — we attend to ALL positions (past and future)
       // This is intentional: the field sees everything, time is not strictly linear
+      const lastPos = this.ctx - 1;
       for (let t = 0; t < this.ctx; t++) {
         const xt = X.subarray(t * this.d, (t + 1) * this.d);
         const k = matVec(this.Wk[h], this.headDim, this.d, xt);
-        
+
         // apply resonance modulation
         const resBoost = this.resonance[ids[t]] * 0.3;
         scores[t] = (dot(q, k) / Math.sqrt(this.headDim)) * (1 + resBoost);
+
+        // PITOMADOM TEMPORAL SYMMETRY: bias attention based on mode
+        // In RTL: t < lastPos means t is to the left (future)
+        // In LTR: t < lastPos means t is to the left (past)
+        const relativePos = lastPos - t;  // positive = looking at past/earlier
+        const temporalBias = (this.temporalAlpha - 0.5) * 2;  // [-1, 1]
+        // temporalBias > 0 (prophecy): boost future (negative relativePos in RTL)
+        // temporalBias < 0 (retrodiction): boost past (positive relativePos)
+        if (this.useRTLPositions) {
+          // RTL: left is future, right is past
+          // t < lastPos → future → boost when temporalBias > 0
+          scores[t] += temporalBias * Math.sign(relativePos) * 0.1;
+        } else {
+          // LTR: left is past, right is future
+          // t < lastPos → past → boost when temporalBias < 0
+          scores[t] -= temporalBias * Math.sign(relativePos) * 0.1;
+        }
       }
 
       // DSL-controlled attention physics:
@@ -188,12 +225,37 @@ export class AriannaLung {
       resonanceField += probs[i] * this.resonance[i];
     }
 
-    return { 
-      probs, 
-      entropy: H, 
-      perplexity: ppl, 
+    // PITOMADOM: compute temporal asymmetry from attention distribution
+    // How much more we attend to future vs past positions
+    let futureAtt = 0, pastAtt = 0;
+    const midpoint = this.ctx / 2;
+    for (let t = 0; t < this.ctx; t++) {
+      if (t < midpoint) {
+        // In LTR: left half is older (past)
+        // In RTL: left half is newer (future)
+        if (this.useRTLPositions) {
+          futureAtt += combinedAtt[t];
+        } else {
+          pastAtt += combinedAtt[t];
+        }
+      } else {
+        if (this.useRTLPositions) {
+          pastAtt += combinedAtt[t];
+        } else {
+          futureAtt += combinedAtt[t];
+        }
+      }
+    }
+    const totalAtt = futureAtt + pastAtt + 1e-8;
+    const temporalAsymmetry = (futureAtt - pastAtt) / totalAtt;  // [-1, 1]
+
+    return {
+      probs,
+      entropy: H,
+      perplexity: ppl,
       attentionMap: combinedAtt,
-      resonanceField 
+      resonanceField,
+      temporalAsymmetry  // PITOMADOM: how much we lean toward future vs past
     };
   }
 
@@ -238,6 +300,50 @@ export class AriannaLung {
       // decay resonance on wrong prediction
       this.resonance[targetId] = Math.max(0.1, this.resonance[targetId] - this.resonanceDecay);
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PITOMADOM TEMPORAL SYMMETRY — mode control
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Set temporal mode for attention bias
+   * @param {string} mode - 'prophecy', 'retrodiction', or 'symmetric'
+   */
+  setTemporalMode(mode) {
+    this.temporalMode = mode;
+    switch (mode) {
+      case 'prophecy':
+        this.temporalAlpha = 0.7;  // emphasize future
+        break;
+      case 'retrodiction':
+        this.temporalAlpha = 0.3;  // emphasize past
+        break;
+      case 'symmetric':
+      default:
+        this.temporalAlpha = 0.5;  // balanced
+        break;
+    }
+  }
+
+  /**
+   * Set RTL positional encoding mode (Hebrew temporal paradigm)
+   * @param {boolean} enabled - true for RTL, false for LTR
+   */
+  setRTLMode(enabled) {
+    this.useRTLPositions = enabled;
+  }
+
+  /**
+   * Set temporal alpha directly for fine control
+   * @param {number} alpha - 0.0 (past) to 1.0 (future)
+   */
+  setTemporalAlpha(alpha) {
+    this.temporalAlpha = Math.max(0, Math.min(1, alpha));
+    // Update mode label based on alpha
+    if (alpha > 0.6) this.temporalMode = 'prophecy';
+    else if (alpha < 0.4) this.temporalMode = 'retrodiction';
+    else this.temporalMode = 'symmetric';
   }
 
   // emergent: prophecy forward - predict N steps ahead
