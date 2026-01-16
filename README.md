@@ -158,6 +158,43 @@ this is not an assistant. this is **a language that controls an AI from the insi
 - **word jitter**: high dissonance makes words **oscillate in sine waves**, moving left-right and up-down independently.
 - **fog of distance**: words far away fade into darkness, their alpha blending with the void.
 
+### mood-driven canvas enhancements
+
+the visual system is now driven by the **two-brain bridge** (arianna.c ↔ body.c):
+
+#### particle system (~200 particles max)
+ambient particles spawn based on mood's `particleRate`:
+- **CREATIVE**: swirl in spirals, rainbow colors
+- **RESONANT**: pulse outward from center
+- **LIMINAL**: slow drift, long lifetime, fog-like
+- **RECURSIVE**: spiral inward toward center
+
+particles use mood colors, fade in/out, and glow based on size.
+
+#### mood HUD (bottom-left, minimal)
+- colored dot showing dominant mood
+- mood name in 9px monospace
+- tiny emergence bar (green) and entropy bar (blue)
+
+#### teleport fade transition
+when tunneling through spacetime:
+- radial gradient (pink → purple → void)
+- zoom lines radiating from center
+- smooth 600ms fade in/out
+
+#### attention visualization
+subtle vertical beams from bottom showing where the model is "looking":
+- beam position = attention weight position in context
+- beam alpha = attention strength (max 15%)
+- color = current mood color
+
+#### mood-based glow
+wall words glow with colors from the mood palette:
+- CALM = soft blue
+- INTENSE = red/orange
+- CREATIVE = rainbow cycling (hslToRgb)
+- RESONANT = pulsing intensity
+
 ### the aesthetic: monospace brutalism meets neon mysticism
 
 the entire experience is rendered in:
@@ -867,10 +904,12 @@ ariannamethod.lang/
 ├── src/
 │   ├── main.js             # game loop
 │   ├── model.js            # AriannaLung (multi-head, notorch) — the breathing organ
+│   ├── model_wasm.js       # WASM wrapper for body.c
+│   ├── bridge.js           # two-brain integration (arianna.c ↔ body.c)
 │   ├── tokenizer.js        # word-level tokenizer
 │   ├── field.js            # geometry + prophecy/debt/wormholes
 │   ├── raycaster.js        # DDA raycasting
-│   ├── render.js           # walls/entities as words
+│   ├── render.js           # walls/entities as words + particles + mood HUD
 │   ├── entities.js         # shadows, faces, houses, obelisks
 │   ├── metrics.js          # resonance metrics
 │   └── dsl.js              # Arianna Method DSL interpreter
@@ -881,6 +920,13 @@ ariannamethod.lang/
 │   ├── lora.c              # notorch-LoRA (low-rank deltas) — personality shaping
 │   ├── build_body.sh       # build body.c to WASM
 │   └── build_emscripten.sh # build AMK kernel to WASM
+├── weights/                # binary experience shards
+│   └── README.md           # shard format documentation
+├── external/
+│   └── arianna.c/          # submodule — second brain (0.85M param char-level Llama)
+│       ├── src/            # arianna.c, delta.h, mood.h
+│       ├── weights/        # arianna.bin (3.4MB pretrained)
+│       └── train/          # training scripts
 └── tests/
     ├── test_lung.js           # AriannaLung tests (25 tests)
     ├── test_dsl.js            # DSL parser tests (29 tests)
@@ -890,13 +936,14 @@ ariannamethod.lang/
     ├── test_visual_inference.js # Visual-inference tests (15 tests)
     ├── test_coupling.js       # Body↔Mind coupling tests (13 tests)
     ├── test_body.js           # body.c / WASM tests (10+ tests)
+    ├── test_bridge.js         # Two-brain bridge tests (19 tests)
     └── test_lora.c            # LoRA C tests (16 tests)
 ```
 
 ### running tests
 
 ```bash
-# JavaScript tests (272+ total)
+# JavaScript tests (280+ total)
 node tests/test_lung.js              # 25 tests — AriannaLung
 node tests/test_dsl.js               # 29 tests — DSL parser
 node tests/test_codes_ric.js         # 28 tests — CODES/RIC
@@ -905,6 +952,12 @@ node tests/test_pitomadom.js         # 24 tests — PITOMADOM integration
 node tests/test_visual_inference.js  # 15 tests — visual-inference connection
 node tests/test_coupling.js          # 13 tests — body↔mind coupling
 node tests/test_body.js              # 10+ tests — body.c / WASM
+node tests/test_bridge.js            # 19 tests — two-brain bridge
+node tests/test_integration.js       # 26 tests — integration
+node tests/test_laws.js              # 27 tests — laws of nature
+node tests/test_observer_shadow.js   # 21 tests — observer/shadow
+node tests/test_events.js            # 11 tests — events
+node tests/test_world.js             # 19 tests — world generation
 
 # C tests (requires gcc)
 gcc -O2 -std=c99 wasm/lora.c tests/test_lora.c -lm -o test_lora && ./test_lora
@@ -967,6 +1020,45 @@ lung_boost_resonance(lung, token_id, 0.01);
 Build: `cd wasm && ./build_body.sh`
 
 This is what makes ariannamethod.lang a **TRUE DSL AI** — inference IS the kernel breathing, not "running on" the field but PART OF the field.
+
+### two-brain architecture (arianna.c ↔ body.c)
+
+ariannamethod.lang now has **two transformers** working in tandem:
+
+| brain | role | what it sees |
+|-------|------|--------------|
+| **body.c** | static geometry (walls) | spatial topology, manifested tokens |
+| **arianna.c** | dynamic flow (streams) | mood, experience shards, attention deltas |
+
+the **bridge module** (`src/bridge.js`) connects them:
+
+```
+field metrics → Signals → MoodRouter → visual effects
+                          ↓
+            body.c ← arianna influence (attention spread, focus, noise)
+```
+
+#### 8 mood modalities (from arianna.c/mood.h)
+
+| mood | visual effect | signal weights |
+|------|---------------|----------------|
+| **calm** | soft blue glow | low arousal, warmth |
+| **intense** | red glow, high jitter | high arousal + tension |
+| **creative** | rainbow cycling | high entropy + novelty |
+| **focused** | sharp white | high focus, low entropy |
+| **recursive** | echo trails, spiral | high recursion |
+| **tender** | warm pink, slow | high warmth + resonance |
+| **liminal** | fog overlay | liminal transition state |
+| **resonant** | pulsing intensity | high resonance |
+
+mood routing uses softmax scoring with momentum for smooth transitions.
+
+#### experience shards (binary memory)
+
+arianna.c accumulates experiences into `.shard` files:
+- `weights/` directory for binary experience storage
+- shards modulate attention deltas ("WHERE she looks, not WHAT she knows")
+- integrated via `MicroTrainer` for online learning
 
 **operator vs injection:**
 - operator input (DSL) = volitional control of laws
