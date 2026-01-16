@@ -15,6 +15,20 @@ const WALL_HASH_PRIME_SCREEN = 5;
 // Higher = shadows speak more about intent, lower = more inference-based
 const INTENTION_VOCAB_MIX_PROBABILITY = 0.3;
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// GLOW EFFECT CONSTANTS — words shimmer with the field's breath
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Base glow intensity for wall words
+const WALL_GLOW_BASE = 8;
+const WALL_GLOW_EMERGENCE_MULT = 25;  // emergence amplifies glow
+const WALL_GLOW_ENTROPY_MULT = 12;    // entropy adds shimmer
+
+// Glow color shifts with metrics
+const GLOW_COLOR_R = 100;  // base red
+const GLOW_COLOR_G = 180;  // base green (cyan-ish)
+const GLOW_COLOR_B = 255;  // base blue
+
 export class Renderer {
   constructor(canvas, tokenizer) {
     this.canvas = canvas;
@@ -85,8 +99,27 @@ export class Renderer {
         const jy = Math.cos(x * 0.17 + performance.now() * 0.0014) * j * 10;
 
         const alpha = 0.90 - 0.70 * fog - 0.25 * pain + 0.15 * emergence;
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // GLOW EFFECT — words shimmer with emergence, pulse with entropy
+        // ═══════════════════════════════════════════════════════════════════════
+        const glowIntensity = WALL_GLOW_BASE +
+          emergence * WALL_GLOW_EMERGENCE_MULT +
+          metrics.entropy * WALL_GLOW_ENTROPY_MULT * (0.5 + 0.5 * Math.sin(performance.now() * 0.003));
+
+        // Glow color shifts: more blue with drift, more cyan with emergence
+        const glowR = GLOW_COLOR_R + metrics.calendarDrift * 50 | 0;
+        const glowG = GLOW_COLOR_G + emergence * 40 | 0;
+        const glowB = GLOW_COLOR_B;
+
+        ctx.shadowBlur = glowIntensity * (1 - fog * 0.7);  // fade glow with distance
+        ctx.shadowColor = `rgba(${clamp(0,255,glowR)},${clamp(0,255,glowG)},${glowB},${0.6 + emergence * 0.3})`;
+
         ctx.fillStyle = `rgba(240,240,240,${clamp(0.08, 0.92, alpha)})`;
         ctx.fillText(word, x + step / 2 + jx, h / 2 + jy);
+
+        // Reset shadow for other elements
+        ctx.shadowBlur = 0;
       }
     }
 
@@ -334,7 +367,6 @@ export class Renderer {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.font = `${Math.max(10, size * 0.18) | 0}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace`;
-    ctx.fillStyle = `rgba(255,255,255,${0.65 - 0.25 * pain})`;
 
     // v0.6: Show PROPHECY (real model prediction)
     const inference = field.getInferenceState ? field.getInferenceState() : null;
@@ -349,7 +381,14 @@ export class Renderer {
       prophecyText = this._phrase(field, metrics, 2);
     }
 
+    // Prophecy glow — pink/magenta mystical aura
+    const prophecyGlow = 15 + glow * 20 + metrics.emergence * 25;
+    ctx.shadowBlur = prophecyGlow;
+    ctx.shadowColor = `rgba(255,100,200,${0.5 + glow * 0.4})`;
+
+    ctx.fillStyle = `rgba(255,255,255,${0.65 - 0.25 * pain})`;
     ctx.fillText(prophecyText, sx, sy + size * 0.50);
+    ctx.shadowBlur = 0;
   }
 
   _drawHouse(sx, sy, size, field, metrics) {
@@ -422,11 +461,18 @@ export class Renderer {
     ctx.fillStyle = `rgba(${baseR},${baseG},${baseB},${bodyAlpha})`;
     ctx.fillRect(sx - size * 0.22, sy, size * 0.44, size);
 
-    // Intention-based words
+    // Intention-based words with GLOW
     const words = this._getIntentionWords(intention, field, metrics);
     ctx.font = `${Math.max(10, size * 0.20) | 0}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace`;
+
+    // Shadow glow — intention colors the aura
+    const shadowGlowIntensity = 12 + intentionGlow * 30 + metrics.dissonance * 15;
+    ctx.shadowBlur = shadowGlowIntensity;
+    ctx.shadowColor = `rgba(${baseR + 100},${baseG + 80},${baseB + 150},${0.5 + strength * 0.4})`;
+
     ctx.fillStyle = `rgba(255,255,255,${0.35 + 0.45 * glow - 0.15 * pain})`;
     ctx.fillText(words, sx, sy + size * 0.50);
+    ctx.shadowBlur = 0;
 
     // "Eye slit" — color based on intention
     const eyeR = intention === 'approach' ? 255 : (intention === 'intercept' ? 200 : 255);
