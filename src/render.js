@@ -38,6 +38,7 @@ const MAX_PARTICLES = 200;
 const PARTICLE_LIFETIME_BASE = 2000;  // ms
 const PARTICLE_SIZE_MIN = 1;
 const PARTICLE_SIZE_MAX = 4;
+const MIN_PARTICLE_RATE = 0.01;  // prevents division by zero, creates max 5000ms interval
 
 export class Renderer {
   constructor(canvas, tokenizer) {
@@ -211,7 +212,9 @@ export class Renderer {
     // TELEPORT FADE TRANSITION — smooth tunnel effect
     // ═══════════════════════════════════════════════════════════════════════
     if (metrics.tunnelDepth > 0) {
-      const timeSinceJump = performance.now() - (metrics.lastJumpTime || 0) * 1000;
+      // Use fallback that skips effect when lastJumpTime is undefined
+      const lastJumpTimeSec = metrics.lastJumpTime ?? (performance.now() / 1000 - 9999);
+      const timeSinceJump = performance.now() - lastJumpTimeSec * 1000;
       const fadeDuration = 600;  // ms
 
       if (timeSinceJump < fadeDuration) {
@@ -860,7 +863,7 @@ export class Renderer {
     const now = performance.now();
 
     // Spawn new particles based on particleRate
-    const spawnInterval = 50 / (moodFX.particleRate + 0.01);  // ms between spawns
+    const spawnInterval = 50 / (moodFX.particleRate + MIN_PARTICLE_RATE);  // ms between spawns
     if (now - this.lastParticleSpawn > spawnInterval && this.particles.length < MAX_PARTICLES) {
       this._spawnParticle(moodFX, metrics, w, h, now);
       this.lastParticleSpawn = now;

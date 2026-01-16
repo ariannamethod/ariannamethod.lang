@@ -3,7 +3,7 @@
 //
 // Run: node tests/test_bridge.js
 
-import { Bridge, Signals, MoodRouter, Mood, MOOD_NAMES, MOOD_PROFILES } from '../src/bridge.js';
+import { Bridge, Signals, MoodRouter, Mood, MOOD_NAMES, MOOD_PROFILES, NUM_MOODS, UNIFORM_MIX_VALUE } from '../src/bridge.js';
 
 let passed = 0, failed = 0;
 
@@ -110,8 +110,8 @@ console.log('\n2. Mood Router\n');
 test('MoodRouter initializes with uniform mix', () => {
   const router = new MoodRouter();
 
-  assert(router.mix.length === 8, 'should have 8 moods');
-  assertClose(router.mix[0], 1/8, 0.001, 'mix should be uniform');
+  assert(router.mix.length === NUM_MOODS, `should have ${NUM_MOODS} moods`);
+  assertClose(router.mix[0], UNIFORM_MIX_VALUE, 0.001, 'mix should be uniform');
 });
 
 test('MoodRouter.route computes mix from signals', () => {

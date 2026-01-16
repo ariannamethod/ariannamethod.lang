@@ -12,6 +12,22 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Entropy normalization: metrics.entropy typically ranges 0-4 (log2 of perplexity)
+const ENTROPY_MAX_RANGE = 4.0;
+
+// Number of vocabulary items to add noise to in creative mode
+const CREATIVE_NOISE_SAMPLE_SIZE = 10;
+
+// Number of moods in the system
+export const NUM_MOODS = 8;
+
+// Uniform mix value for initialization (1/NUM_MOODS)
+export const UNIFORM_MIX_VALUE = 1 / NUM_MOODS;
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MOOD DEFINITIONS (mirroring arianna.c/mood.h)
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -182,7 +198,7 @@ export class Signals {
   fromMetrics(metrics, field) {
     // Direct mappings
     this.arousal = clamp01(metrics.arousal || 0.5);
-    this.entropy = clamp01(metrics.entropy / 4.0);  // normalize from ~0-4 range
+    this.entropy = clamp01(metrics.entropy / ENTROPY_MAX_RANGE);
     this.tension = clamp01(metrics.tension || 0.5);
     this.resonance = clamp01(metrics.resonanceField || 0.5);
     this.focus = clamp01(field?.cfg?.attendFocus || 0.7);
@@ -394,7 +410,7 @@ export class Bridge {
 
     // Creative mode adds noise to resonance
     if (this.ariannaToBody.creativityNoise > 0) {
-      for (let i = 0; i < Math.min(10, model.vocabSize); i++) {
+      for (let i = 0; i < Math.min(CREATIVE_NOISE_SAMPLE_SIZE, model.vocabSize); i++) {
         const idx = Math.floor(Math.random() * model.vocabSize);
         model.resonance[idx] += (Math.random() - 0.5) * this.ariannaToBody.creativityNoise;
         model.resonance[idx] = clamp01(model.resonance[idx]);
