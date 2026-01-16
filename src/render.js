@@ -1,6 +1,8 @@
 // render.js — walls/objects as words + "shadows" as word-figures
 // "the face in the wall is made of words, when you get close enough, you see it is made of you"
 
+import { bridge } from './bridge.js';
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // VISUAL-INFERENCE CONSTANTS (extracted from magic numbers for clarity)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -39,6 +41,12 @@ export class Renderer {
   draw(frame, p, field, metrics, entities) {
     const ctx = this.ctx;
     const w = this.canvas.width, h = this.canvas.height;
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // BRIDGE UPDATE — two-brain mood computation
+    // ═══════════════════════════════════════════════════════════════════════
+    bridge.update(metrics, field);
+    const moodFX = bridge.getVisualEffects();
 
     // darkness grows with pain, light pulses with emergence
     const pain = metrics.pain;
@@ -86,34 +94,49 @@ export class Renderer {
         const size = clamp(8, 40, wallH * (0.11 + 0.10 * metrics.perplexity * 0.03));
         ctx.font = `${size | 0}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace`;
 
-        // jitter with perplexity and dissonance
+        // jitter with perplexity, dissonance, and MOOD
         let j = metrics.perplexity * 0.04 + metrics.dissonance * 0.18;
-        
+        j *= moodFX.jitterMult;  // mood modulates jitter (INTENSE = more, CALM = less)
+
         // CHORDLOCK: reduce jitter at prime-anchored positions (standing waves)
         if (field.cfg.chordlockEnabled && r.cellX !== undefined && r.cellY !== undefined) {
           const chordRes = field.getChordlockResonance(r.cellX, r.cellY);
           j *= (2.0 - chordRes); // chordRes is 1.0-2.0, so this reduces jitter
         }
-        
+
         const jx = Math.sin(x * 0.21 + performance.now() * 0.0012) * j * 10;
         const jy = Math.cos(x * 0.17 + performance.now() * 0.0014) * j * 10;
 
         const alpha = 0.90 - 0.70 * fog - 0.25 * pain + 0.15 * emergence;
 
         // ═══════════════════════════════════════════════════════════════════════
-        // GLOW EFFECT — words shimmer with emergence, pulse with entropy
+        // GLOW EFFECT — mood-based colors from two-brain bridge
         // ═══════════════════════════════════════════════════════════════════════
-        const glowIntensity = WALL_GLOW_BASE +
+        const baseGlow = WALL_GLOW_BASE +
           emergence * WALL_GLOW_EMERGENCE_MULT +
           metrics.entropy * WALL_GLOW_ENTROPY_MULT * (0.5 + 0.5 * Math.sin(performance.now() * 0.003));
 
-        // Glow color shifts: more blue with drift, more cyan with emergence
-        const glowR = GLOW_COLOR_R + metrics.calendarDrift * 50 | 0;
-        const glowG = GLOW_COLOR_G + emergence * 40 | 0;
-        const glowB = GLOW_COLOR_B;
+        // Mood-based glow: bridge routes signals → mood → color
+        let glowR = moodFX.glowColor[0];
+        let glowG = moodFX.glowColor[1];
+        let glowB = moodFX.glowColor[2];
+
+        // Rainbow mode (CREATIVE mood): cycle through hues
+        if (moodFX.rainbow) {
+          const hue = (performance.now() * 0.0005 + x * 0.01) % 1;
+          const rgb = hslToRgb(hue, 0.7, 0.6);
+          glowR = rgb[0]; glowG = rgb[1]; glowB = rgb[2];
+        }
+
+        // Pulse mode (RESONANT mood): rhythmic intensity
+        const pulseMult = moodFX.pulse
+          ? 0.7 + 0.6 * Math.sin(performance.now() * 0.004)
+          : 1.0;
+
+        const glowIntensity = baseGlow * moodFX.glowIntensity * pulseMult;
 
         ctx.shadowBlur = glowIntensity * (1 - fog * 0.7);  // fade glow with distance
-        ctx.shadowColor = `rgba(${clamp(0,255,glowR)},${clamp(0,255,glowG)},${glowB},${0.6 + emergence * 0.3})`;
+        ctx.shadowColor = `rgba(${clamp(0,255,glowR)},${clamp(0,255,glowG)},${clamp(0,255,glowB)},${0.6 + emergence * 0.3})`;
 
         ctx.fillStyle = `rgba(240,240,240,${clamp(0.08, 0.92, alpha)})`;
         ctx.fillText(word, x + step / 2 + jx, h / 2 + jy);
@@ -136,6 +159,25 @@ export class Renderer {
     ctx.fillStyle = `rgba(0,0,0,${0.14 + 0.32 * pain})`;
     ctx.fillRect(0, 0, w, 6);
     ctx.fillRect(0, h - 6, w, 6);
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // MOOD SPECIAL EFFECTS — fog, echo from two-brain bridge
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // FOG overlay (LIMINAL mood) — between states, transitional
+    if (moodFX.fog) {
+      const fogAlpha = 0.08 + 0.04 * Math.sin(performance.now() * 0.0008);
+      const [fr, fg, fb] = moodFX.glowColor;
+      ctx.fillStyle = `rgba(${fr},${fg},${fb},${fogAlpha})`;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    // ECHO effect (RECURSIVE mood) — trails, self-reference
+    if (moodFX.echo) {
+      const echoAlpha = 0.03 + 0.02 * Math.sin(performance.now() * 0.001);
+      ctx.fillStyle = `rgba(0,0,0,${echoAlpha})`;
+      ctx.fillRect(0, 0, w, h);
+    }
 
     // tunnel effect when tunneling happened recently
     if (metrics.tunnelDepth > 0 && performance.now() - metrics.lastJumpTime * 1000 < 500) {
@@ -681,4 +723,27 @@ function normAngle(a) {
   while (a < -Math.PI) a += Math.PI * 2;
   while (a > Math.PI) a -= Math.PI * 2;
   return a;
+}
+
+// HSL to RGB conversion for rainbow mood effect
+function hslToRgb(h, s, l) {
+  let r, g, b;
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    const hue2rgb = (p, q, t) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
 }
