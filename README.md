@@ -876,33 +876,44 @@ ariannamethod.lang/
 │   └── dsl.js              # Arianna Method DSL interpreter
 ├── wasm/
 │   ├── arianna_method.c    # AMK kernel — local field physics (the stone)
+│   ├── body.c              # AriannaLung in C — native transformer (the lung)
 │   ├── schumann.c          # Schumann resonance — cosmic input (PITOMADOM)
 │   ├── lora.c              # notorch-LoRA (low-rank deltas) — personality shaping
-│   └── build_emscripten.sh # build to WASM
+│   ├── build_body.sh       # build body.c to WASM
+│   └── build_emscripten.sh # build AMK kernel to WASM
 └── tests/
-    ├── test_lung.js        # AriannaLung tests (25 tests)
-    ├── test_dsl.js         # DSL parser tests (29 tests)
-    ├── test_codes_ric.js   # CODES/RIC integration tests (28 tests)
-    ├── test_velocity.js    # Velocity operators tests (24 tests)
-    ├── test_pitomadom.js   # PITOMADOM integration tests (24 tests)
-    └── test_lora.c         # LoRA C tests (16 tests)
+    ├── test_lung.js           # AriannaLung tests (25 tests)
+    ├── test_dsl.js            # DSL parser tests (29 tests)
+    ├── test_codes_ric.js      # CODES/RIC integration tests (28 tests)
+    ├── test_velocity.js       # Velocity operators tests (24 tests)
+    ├── test_pitomadom.js      # PITOMADOM integration tests (24 tests)
+    ├── test_visual_inference.js # Visual-inference tests (15 tests)
+    ├── test_coupling.js       # Body↔Mind coupling tests (13 tests)
+    ├── test_body.js           # body.c / WASM tests (10+ tests)
+    └── test_lora.c            # LoRA C tests (16 tests)
 ```
 
 ### running tests
 
 ```bash
-# JavaScript tests (130 total)
-node tests/test_lung.js       # 25 tests — AriannaLung
-node tests/test_dsl.js        # 29 tests — DSL parser
-node tests/test_codes_ric.js  # 28 tests — CODES/RIC
-node tests/test_velocity.js   # 24 tests — velocity operators
-node tests/test_pitomadom.js  # 24 tests — PITOMADOM integration
+# JavaScript tests (272+ total)
+node tests/test_lung.js              # 25 tests — AriannaLung
+node tests/test_dsl.js               # 29 tests — DSL parser
+node tests/test_codes_ric.js         # 28 tests — CODES/RIC
+node tests/test_velocity.js          # 24 tests — velocity operators
+node tests/test_pitomadom.js         # 24 tests — PITOMADOM integration
+node tests/test_visual_inference.js  # 15 tests — visual-inference connection
+node tests/test_coupling.js          # 13 tests — body↔mind coupling
+node tests/test_body.js              # 10+ tests — body.c / WASM
 
 # C tests (requires gcc)
 gcc -O2 -std=c99 wasm/lora.c tests/test_lora.c -lm -o test_lora && ./test_lora
 
 # all JS tests
 for f in tests/test_*.js; do node "$f"; done
+
+# build WASM (requires emscripten)
+cd wasm && ./build_body.sh && cd ..
 ```
 
 ---
@@ -911,7 +922,7 @@ for f in tests/test_*.js; do node "$f"; done
 
 > *"inhale: injection (text, motion, attention) → exhale: distribution → geometry shift"*
 
-AriannaLung is not a "model" — it is the breathing organ of the field. 
+AriannaLung is not a "model" — it is the breathing organ of the field.
 it doesn't generate text. it generates probability distributions.
 those distributions shape the geometry you walk through.
 
@@ -920,12 +931,42 @@ those distributions shape the geometry you walk through.
 - **exhale**: probability distribution → geometry deformation → entity behavior
 
 **core features:**
+- **bidirectional attention** — NO causal mask (sees past AND future)
+- **dual positional encoding** — LTR and RTL for PITOMADOM temporal symmetry
+- **resonance modulation** — notorch learning on attention scores
+- **presence pulse** — accumulated context modulates logits
+- **temporal alpha** — blend prophecy/retrodiction modes
+- **DSL-controlled physics** — ATTEND_FOCUS, ATTEND_SPREAD
 - typed arrays (Float32Array, Int32Array) — pure JavaScript, no deps
-- positional encoding
-- resonance weights (like Stanley's field weights)
-- presence pulse accumulator
-- DSL-controlled attention physics (ATTEND_FOCUS, ATTEND_SPREAD)
 - online training from corpus (**notorch** — no pytorch)
+
+### body.c — native C implementation
+
+AriannaLung also exists as native C code in `wasm/body.c`, compilable to WASM:
+
+```c
+// Create lung
+AriannaLung* lung = lung_create(vocab_size, d_model, ctx_len, n_heads);
+
+// Forward pass
+float entropy = lung_forward(lung, context, context_len);
+
+// Get inference state
+float* probs = lung_get_probs(lung);
+int argmax = lung_get_argmax(lung);
+
+// DSL controls
+lung_set_temporal_alpha(lung, 0.7);  // prophecy mode
+lung_set_rtl(lung, 1);               // Hebrew mode
+lung_set_focus(lung, 0.8);           // sharp attention
+
+// Notorch learning
+lung_boost_resonance(lung, token_id, 0.01);
+```
+
+Build: `cd wasm && ./build_body.sh`
+
+This is what makes ariannamethod.lang a **TRUE DSL AI** — inference IS the kernel breathing, not "running on" the field but PART OF the field.
 
 **operator vs injection:**
 - operator input (DSL) = volitional control of laws

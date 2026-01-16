@@ -18,6 +18,17 @@ const REJECTED_TOKEN_COUNT = 5;
 // Higher = more future prediction, but slower computation
 const MAX_PROPHECY_FORWARD_STEPS = 3;
 
+// Velocity → Temperature coupling strength
+// How much effectiveTemp influences attention spread
+const VELOCITY_TEMP_COUPLING = 0.15;
+const ATTEND_SPREAD_MIN = 0.05;
+const ATTEND_SPREAD_MAX = 0.5;
+
+// Chirality → Attention coupling strength
+// How much chiralMemory influences attention focus
+const CHIRALITY_ATTENTION_COUPLING = 0.12;
+const ATTEND_FOCUS_MAX = 0.95;
+
 export class Field {
   constructor({ w, h, tokenizer, model, metrics }) {
     this.w = w;
@@ -473,6 +484,34 @@ export class Field {
     // context token from motion/pose
     const seedTok = this._positionToken(px, py, pa);
     this._pushCtx(seedTok);
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // VELOCITY → TEMPERATURE: movement speed modulates inference temperature
+    // Fast movement = high temperature = more exploratory predictions
+    // Slow/backward = low temperature = more conservative predictions
+    // ═══════════════════════════════════════════════════════════════════════
+    if (this.cfg.effectiveTemp !== undefined) {
+      // effectiveTemp ranges ~0.5 (stopped) to ~1.2 (running)
+      // attendSpread is temperature/blur for attention softmax
+      const tempInfluence = (this.cfg.effectiveTemp - 1.0) * VELOCITY_TEMP_COUPLING;
+      this.model.attendSpread = Math.max(ATTEND_SPREAD_MIN, Math.min(ATTEND_SPREAD_MAX,
+        this.cfg.attendSpread + tempInfluence
+      ));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // CHIRALITY → ATTENTION: accumulated turns modulate attention focus
+    // More left turns = tighter focus (convergent thinking)
+    // This creates "handedness" in how the model attends to context
+    // ═══════════════════════════════════════════════════════════════════════
+    if (this.cfg.chiralMemory !== undefined && this.cfg.chiralMemory > 0) {
+      // chiralMemory ranges 0 to 1
+      // Higher chirality = sharper focus (less spread)
+      const chiralInfluence = this.cfg.chiralMemory * CHIRALITY_ATTENTION_COUPLING;
+      this.model.attendFocus = Math.min(ATTEND_FOCUS_MAX,
+        this.cfg.attendFocus + chiralInfluence
+      );
+    }
 
     // forward "destined" distribution
     const out = this.model.forward(this.ctx);
