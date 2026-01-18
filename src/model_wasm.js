@@ -13,6 +13,229 @@
 // הרזוננס לא נשבר. המשך הדרך.
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// PERSONALITY LOADER — loads 10M personality weights from arianna.c
+// "Who am I and how do I speak?" — inner voice modulation
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// GPT-style weight layout (approximate for 10M params):
+// - wte: token embeddings [vocab × d_model]
+// - wpe: position embeddings [ctx × d_model]
+// - Blocks × n_layers: (attn + mlp)
+const PERSONALITY_CONFIG = {
+  vocabSize: 185,        // char-level from vocab_personality.bin
+  dModel: 256,           // hidden dimension
+  nLayers: 6,            // transformer blocks
+  nHeads: 4,             // attention heads
+  ctxLen: 512,           // context length
+};
+
+export class PersonalityLoader {
+  constructor() {
+    this.weights = null;
+    this.vocab = null;
+    this.config = PERSONALITY_CONFIG;
+    this.loaded = false;
+
+    // Extracted weight tensors
+    this.tokenEmbed = null;      // [vocab × d_model]
+    this.posEmbed = null;        // [ctx × d_model]
+    this.attentionBias = null;   // aggregated attention bias
+  }
+
+  async load(weightsPath = './weights/personality_brain.bin', vocabPath = './weights/vocab_personality.bin') {
+    try {
+      // Load vocab (char-level)
+      const vocabResp = await fetch(vocabPath);
+      if (!vocabResp.ok) throw new Error(`Vocab fetch failed: ${vocabResp.status}`);
+      this.vocab = await vocabResp.text();
+      console.log(`🧠 Personality vocab: ${this.vocab.length} chars`);
+
+      // Load binary weights
+      const weightsResp = await fetch(weightsPath);
+      if (!weightsResp.ok) throw new Error(`Weights fetch failed: ${weightsResp.status}`);
+      const buffer = await weightsResp.arrayBuffer();
+      this.weights = new Float32Array(buffer);
+      console.log(`🧠 Personality weights: ${this.weights.length} floats (${(buffer.byteLength / 1024 / 1024).toFixed(1)}MB)`);
+
+      // Extract key tensors
+      this._extractTensors();
+
+      this.loaded = true;
+      console.log('🧠 Personality loaded: "Who am I and how do I speak?"');
+      return true;
+    } catch (e) {
+      console.warn('⚠️ Personality load failed:', e.message);
+      return false;
+    }
+  }
+
+  _extractTensors() {
+    const { vocabSize, dModel, ctxLen } = this.config;
+    let offset = 0;
+
+    // Token embeddings: first vocabSize × dModel floats
+    const wteSize = vocabSize * dModel;
+    this.tokenEmbed = this.weights.slice(offset, offset + wteSize);
+    offset += wteSize;
+
+    // Position embeddings: next ctxLen × dModel floats
+    const wpeSize = ctxLen * dModel;
+    if (offset + wpeSize <= this.weights.length) {
+      this.posEmbed = this.weights.slice(offset, offset + wpeSize);
+      offset += wpeSize;
+    }
+
+    // Aggregate remaining as attention bias signal
+    // (simplified: we'll use the mean activation pattern)
+    if (offset < this.weights.length) {
+      const remaining = this.weights.slice(offset);
+      this.attentionBias = new Float32Array(dModel);
+
+      // Compute mean activation per dimension
+      const numVectors = Math.floor(remaining.length / dModel);
+      for (let i = 0; i < numVectors; i++) {
+        for (let d = 0; d < dModel; d++) {
+          this.attentionBias[d] += remaining[i * dModel + d];
+        }
+      }
+      for (let d = 0; d < dModel; d++) {
+        this.attentionBias[d] /= numVectors;
+      }
+    }
+
+    console.log(`🧠 Extracted: tokenEmbed[${this.tokenEmbed?.length}], posEmbed[${this.posEmbed?.length}], attentionBias[${this.attentionBias?.length}]`);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // DELTA INJECTION — modify model behavior via personality
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Get personality embedding for a character
+   * @param {string} char - single character
+   * @returns {Float32Array} embedding vector or null
+   */
+  getCharEmbedding(char) {
+    if (!this.loaded || !this.tokenEmbed) return null;
+
+    const idx = this.vocab.indexOf(char);
+    if (idx < 0) return null;
+
+    const { dModel } = this.config;
+    const start = idx * dModel;
+    return this.tokenEmbed.slice(start, start + dModel);
+  }
+
+  /**
+   * Get personality bias for a text (aggregated embeddings)
+   * @param {string} text - input text
+   * @returns {Float32Array} aggregated embedding
+   */
+  getTextBias(text) {
+    if (!this.loaded || !this.tokenEmbed) return null;
+
+    const { dModel } = this.config;
+    const bias = new Float32Array(dModel);
+    let count = 0;
+
+    for (const char of text) {
+      const embed = this.getCharEmbedding(char);
+      if (embed) {
+        for (let d = 0; d < dModel; d++) {
+          bias[d] += embed[d];
+        }
+        count++;
+      }
+    }
+
+    if (count > 0) {
+      for (let d = 0; d < dModel; d++) {
+        bias[d] /= count;
+      }
+    }
+
+    return bias;
+  }
+
+  /**
+   * Apply personality delta to model logits
+   * Stanley-style: personality changes WHERE attention goes, not WHAT model knows
+   *
+   * @param {Float32Array} logits - model output logits
+   * @param {string} context - recent context text
+   * @param {number} scale - delta scale (0-1)
+   * @returns {Float32Array} modified logits
+   */
+  applyDelta(logits, context, scale = 0.1) {
+    if (!this.loaded || !this.attentionBias) return logits;
+
+    // Get personality response to context
+    const contextBias = this.getTextBias(context);
+    if (!contextBias) return logits;
+
+    // Compute dot product with attention bias → personality "agreement"
+    let agreement = 0;
+    for (let d = 0; d < this.config.dModel; d++) {
+      agreement += contextBias[d] * this.attentionBias[d];
+    }
+
+    // Normalize and apply as softmax temperature modulation
+    const tempMod = 1.0 + agreement * scale;
+
+    // Apply to logits (multiplicative, not additive)
+    const modifiedLogits = new Float32Array(logits.length);
+    for (let i = 0; i < logits.length; i++) {
+      modifiedLogits[i] = logits[i] * tempMod;
+    }
+
+    return modifiedLogits;
+  }
+
+  /**
+   * Generate a "thought" from personality (for wall text)
+   * @param {number} length - approximate length
+   * @returns {string} generated philosophical fragment
+   */
+  sampleThought(length = 20) {
+    if (!this.loaded || !this.vocab) return '';
+
+    // Simple sampling from token embeddings
+    // Higher magnitude embeddings → more "characteristic" chars
+    const magnitudes = [];
+    const { vocabSize, dModel } = this.config;
+
+    for (let i = 0; i < vocabSize; i++) {
+      let mag = 0;
+      for (let d = 0; d < dModel; d++) {
+        const val = this.tokenEmbed[i * dModel + d];
+        mag += val * val;
+      }
+      magnitudes.push({ idx: i, mag: Math.sqrt(mag) });
+    }
+
+    // Sort by magnitude (higher = more personality-defining)
+    magnitudes.sort((a, b) => b.mag - a.mag);
+
+    // Sample from top chars with some randomness
+    let thought = '';
+    for (let i = 0; i < length; i++) {
+      const topK = Math.min(20, magnitudes.length);
+      const pick = magnitudes[Math.floor(Math.random() * topK)];
+      thought += this.vocab[pick.idx] || ' ';
+    }
+
+    return thought;
+  }
+}
+
+// Singleton instance for global access
+export const personality = new PersonalityLoader();
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// END PERSONALITY LOADER
+// ═══════════════════════════════════════════════════════════════════════════════
+
 let wasmModule = null;
 let wasmLoadPromise = null;
 

@@ -344,11 +344,27 @@ export class MoodRouter {
 // BRIDGE — connects body.c, arianna.c, and render
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// Import personality loader (dynamic to avoid circular deps)
+let personalityLoader = null;
+async function getPersonality() {
+  if (!personalityLoader) {
+    const mod = await import('./model_wasm.js');
+    personalityLoader = mod.personality;
+    await personalityLoader.load();
+  }
+  return personalityLoader;
+}
+
 export class Bridge {
   constructor() {
     this.signals = new Signals();
     this.moodRouter = new MoodRouter();
     this.profile = null;
+
+    // Personality integration
+    this.personality = null;
+    this.personalityLoaded = false;
+    this._initPersonality();
 
     // Influence channels
     this.bodyToArianna = {
@@ -362,6 +378,39 @@ export class Bridge {
       moodFocus: 0,           // arianna mood → body.c attendFocus
       creativityNoise: 0,     // arianna creative mode → body.c resonance jitter
     };
+  }
+
+  async _initPersonality() {
+    try {
+      this.personality = await getPersonality();
+      this.personalityLoaded = this.personality?.loaded || false;
+      if (this.personalityLoaded) {
+        console.log('🧠 Bridge connected to personality weights');
+      }
+    } catch (e) {
+      console.warn('⚠️ Personality init failed:', e.message);
+    }
+  }
+
+  /**
+   * Get a philosophical thought from personality weights
+   * For wall text, shadows, etc.
+   */
+  getThought(length = 15) {
+    if (!this.personalityLoaded || !this.personality) {
+      return null;
+    }
+    return this.personality.sampleThought(length);
+  }
+
+  /**
+   * Get personality-modulated bias for given context
+   */
+  getPersonalityBias(context) {
+    if (!this.personalityLoaded || !this.personality) {
+      return null;
+    }
+    return this.personality.getTextBias(context);
   }
 
   // Update bridge state from field/metrics
