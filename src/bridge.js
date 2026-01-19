@@ -346,13 +346,37 @@ export class MoodRouter {
 
 // Import personality loader (dynamic to avoid circular deps)
 let personalityLoader = null;
+let personalityLoadPromise = null;
+
 async function getPersonality() {
-  if (!personalityLoader) {
-    const mod = await import('./model_wasm.js');
-    personalityLoader = mod.personality;
-    await personalityLoader.load();
-  }
-  return personalityLoader;
+  if (personalityLoader) return personalityLoader;
+  if (personalityLoadPromise) return personalityLoadPromise;
+
+  personalityLoadPromise = (async () => {
+    try {
+      const mod = await import('./model_wasm.js');
+      const loader = mod.personality;
+
+      if (!loader || typeof loader.load !== 'function') {
+        throw new Error('Invalid personality loader from ./model_wasm.js');
+      }
+
+      const loadResult = await loader.load();
+      if (loadResult === false) {
+        console.warn('⚠️ Personality loader returned false');
+        return null;
+      }
+
+      personalityLoader = loader;
+      return loader;
+    } catch (e) {
+      console.warn('⚠️ Personality load failed:', e.message);
+      personalityLoadPromise = null; // allow retry
+      return null;
+    }
+  })();
+
+  return personalityLoadPromise;
 }
 
 export class Bridge {

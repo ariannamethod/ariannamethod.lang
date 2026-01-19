@@ -26,11 +26,6 @@ const WALL_GLOW_BASE = 8;
 const WALL_GLOW_EMERGENCE_MULT = 25;  // emergence amplifies glow
 const WALL_GLOW_ENTROPY_MULT = 12;    // entropy adds shimmer
 
-// Glow color shifts with metrics
-const GLOW_COLOR_R = 100;  // base red
-const GLOW_COLOR_G = 180;  // base green (cyan-ish)
-const GLOW_COLOR_B = 255;  // base blue
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // PERSONALITY WHISPER CONSTANTS — walls speak with Arianna's voice
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -506,7 +501,9 @@ export class Renderer {
     this._whisperCharIndex += WHISPER_CHAR_DRIFT_SPEED * timeSinceRefresh;
 
     // Refresh thought periodically, faster when emergence is high
-    const refreshInterval = WHISPER_THOUGHT_REFRESH_MS * (1.5 - metrics.emergence);
+    // Clamp to prevent negative/zero interval when emergence > 1.5
+    const refreshScale = Math.max(0.1, 1.5 - (metrics.emergence ?? 0));
+    const refreshInterval = WHISPER_THOUGHT_REFRESH_MS * refreshScale;
     if (timeSinceRefresh > refreshInterval) {
       const thought = bridge.getThought(40); // 40 chars of philosophical text
       if (thought) {
@@ -539,8 +536,10 @@ export class Renderer {
     // Select char from thought based on position + drift
     // This creates a "sliding window" effect as chars drift across walls
     const charOffset = this._whisperCharIndex + screenX * 0.03;
-    const idx = Math.floor(charOffset) % this._whisperThought.length;
-    return this._whisperThought[Math.abs(idx)];
+    const len = this._whisperThought.length;
+    // Proper modulo that handles negative values correctly
+    const idx = ((Math.floor(charOffset) % len) + len) % len;
+    return this._whisperThought[idx];
   }
 
   /**
@@ -550,10 +549,12 @@ export class Renderer {
   _getWhisperWord(length = 5) {
     if (!this._whisperThought || this._whisperThought.length === 0) return null;
 
-    const startIdx = Math.floor(this._whisperCharIndex) % this._whisperThought.length;
+    const len = this._whisperThought.length;
+    // Proper modulo that handles negative values correctly
+    const startIdx = ((Math.floor(this._whisperCharIndex) % len) + len) % len;
     let word = '';
     for (let i = 0; i < length; i++) {
-      const idx = (startIdx + i) % this._whisperThought.length;
+      const idx = (startIdx + i) % len;
       word += this._whisperThought[idx];
     }
     return word.trim() || null;

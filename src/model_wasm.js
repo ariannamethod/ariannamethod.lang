@@ -22,7 +22,7 @@
 // - wte: token embeddings [vocab × d_model]
 // - wpe: position embeddings [ctx × d_model]
 // - Blocks × n_layers: (attn + mlp)
-const PERSONALITY_CONFIG = {
+export const PERSONALITY_CONFIG = {
   vocabSize: 185,        // char-level from vocab_personality.bin
   dModel: 256,           // hidden dimension
   nLayers: 6,            // transformer blocks
@@ -90,17 +90,24 @@ export class PersonalityLoader {
     // (simplified: we'll use the mean activation pattern)
     if (offset < this.weights.length) {
       const remaining = this.weights.slice(offset);
-      this.attentionBias = new Float32Array(dModel);
-
-      // Compute mean activation per dimension
       const numVectors = Math.floor(remaining.length / dModel);
-      for (let i = 0; i < numVectors; i++) {
-        for (let d = 0; d < dModel; d++) {
-          this.attentionBias[d] += remaining[i * dModel + d];
+
+      // Guard against division by zero
+      if (numVectors === 0) {
+        console.warn('⚠️ Not enough remaining weights to compute attentionBias');
+        this.attentionBias = null;
+      } else {
+        this.attentionBias = new Float32Array(dModel);
+
+        // Compute mean activation per dimension
+        for (let i = 0; i < numVectors; i++) {
+          for (let d = 0; d < dModel; d++) {
+            this.attentionBias[d] += remaining[i * dModel + d];
+          }
         }
-      }
-      for (let d = 0; d < dModel; d++) {
-        this.attentionBias[d] /= numVectors;
+        for (let d = 0; d < dModel; d++) {
+          this.attentionBias[d] /= numVectors;
+        }
       }
     }
 
