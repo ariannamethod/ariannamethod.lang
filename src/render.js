@@ -32,6 +32,14 @@ const GLOW_COLOR_G = 180;  // base green (cyan-ish)
 const GLOW_COLOR_B = 255;  // base blue
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// PERSONALITY WHISPER CONSTANTS — walls speak with Arianna's voice
+// ═══════════════════════════════════════════════════════════════════════════════
+const WHISPER_THOUGHT_REFRESH_MS = 3000;  // new thought every 3 seconds
+const WHISPER_EMERGENCE_THRESHOLD = 0.3;  // minimum emergence to trigger whispers
+const WHISPER_BLEND_PROBABILITY = 0.15;   // 15% chance to show personality char
+const WHISPER_CHAR_DRIFT_SPEED = 0.0002;  // how fast chars shift across walls
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // PARTICLE SYSTEM CONSTANTS
 // ═══════════════════════════════════════════════════════════════════════════════
 const MAX_PARTICLES = 200;
@@ -49,6 +57,11 @@ export class Renderer {
     // Particle system state
     this.particles = [];
     this.lastParticleSpawn = 0;
+
+    // Personality whisper state — walls speak philosophical fragments
+    this._whisperThought = '';           // current thought from personality
+    this._whisperLastRefresh = 0;        // when we last refreshed the thought
+    this._whisperCharIndex = 0;          // current position in thought (drifts)
   }
 
   draw(frame, p, field, metrics, entities) {
@@ -60,6 +73,9 @@ export class Renderer {
     // ═══════════════════════════════════════════════════════════════════════
     bridge.update(metrics, field);
     const moodFX = bridge.getVisualEffects();
+
+    // Update personality whisper (walls speak philosophical fragments)
+    this._updateWhisper(metrics);
 
     // darkness grows with pain, light pulses with emergence
     const pain = metrics.pain;
@@ -100,10 +116,10 @@ export class Renderer {
       ctx.fillStyle = `rgb(${clamp(0, 255, rr)},${clamp(0, 255, gg)},${clamp(0, 255, bb)})`;
       ctx.fillRect(x, y0, 1, wallH);
 
-      // word overlay (English token) — v0.6: use real inference
+      // word overlay (English token) — v0.6: use real inference, v0.7: personality whisper
       if (r.hit && (x % step === 0)) {
-        // v0.6: Get word from inference if cell token is invalid/empty
-        const word = this._getWallWord(field, r.tok, r.cellX, r.cellY, x);
+        // v0.7: Get word from inference, or personality char when emergence is high
+        const word = this._getWallWord(field, r.tok, r.cellX, r.cellY, x, metrics);
         const size = clamp(8, 40, wallH * (0.11 + 0.10 * metrics.perplexity * 0.03));
         ctx.font = `${size | 0}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace`;
 
@@ -416,9 +432,23 @@ export class Renderer {
 
   // ═══════════════════════════════════════════════════════════════════════════
   // v0.6: Wall words from REAL inference (when cell empty or invalid)
+  // v0.7: PERSONALITY WHISPER — walls speak philosophical fragments when emergence is high
   // ═══════════════════════════════════════════════════════════════════════════
 
-  _getWallWord(field, cellTok, cellX, cellY, screenX) {
+  _getWallWord(field, cellTok, cellX, cellY, screenX, metrics) {
+    // ═══════════════════════════════════════════════════════════════════════
+    // PERSONALITY WHISPER — when emergence is high, walls breathe philosophy
+    // The char-level personality creates flowing, shifting text
+    // ═══════════════════════════════════════════════════════════════════════
+    const emergence = metrics?.emergence || 0;
+    const personalityChar = this._getPersonalityChar(screenX, emergence);
+
+    if (personalityChar) {
+      // Return just the character — walls whisper one letter at a time
+      // This creates a mesmerizing effect as chars drift across surfaces
+      return personalityChar;
+    }
+
     // If cell has valid manifested token, use it (this IS from inference via manifestation)
     if (cellTok >= 0) {
       return this.tokenizer.word(cellTok);
@@ -457,6 +487,76 @@ export class Renderer {
       return forced.concat(words.slice(0, Math.max(0, k - 3))).join(" ");
     }
     return words.join(" ");
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PERSONALITY WHISPER — walls breathe with Arianna's philosophical voice
+  // "the walls speak not words, but the space between words"
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Update the whisper thought cache from personality
+   * Called each frame; only refreshes periodically
+   */
+  _updateWhisper(metrics) {
+    const now = performance.now();
+    const timeSinceRefresh = now - this._whisperLastRefresh;
+
+    // Drift the char index continuously (creates flowing text effect)
+    this._whisperCharIndex += WHISPER_CHAR_DRIFT_SPEED * timeSinceRefresh;
+
+    // Refresh thought periodically, faster when emergence is high
+    const refreshInterval = WHISPER_THOUGHT_REFRESH_MS * (1.5 - metrics.emergence);
+    if (timeSinceRefresh > refreshInterval) {
+      const thought = bridge.getThought(40); // 40 chars of philosophical text
+      if (thought) {
+        this._whisperThought = thought;
+      }
+      this._whisperLastRefresh = now;
+    }
+  }
+
+  /**
+   * Get a personality character for wall position
+   * Returns a char from the current thought, or null if whisper not active
+   *
+   * @param {number} screenX - screen x position
+   * @param {number} emergence - current emergence metric
+   * @returns {string|null} single character or null
+   */
+  _getPersonalityChar(screenX, emergence) {
+    // Only whisper when emergence crosses threshold
+    if (emergence < WHISPER_EMERGENCE_THRESHOLD) return null;
+
+    // No thought yet
+    if (!this._whisperThought || this._whisperThought.length === 0) return null;
+
+    // Probabilistic blend — not every position shows personality
+    const emergenceBoost = (emergence - WHISPER_EMERGENCE_THRESHOLD) * 2;
+    const probability = WHISPER_BLEND_PROBABILITY + emergenceBoost * 0.3;
+    if (Math.random() > probability) return null;
+
+    // Select char from thought based on position + drift
+    // This creates a "sliding window" effect as chars drift across walls
+    const charOffset = this._whisperCharIndex + screenX * 0.03;
+    const idx = Math.floor(charOffset) % this._whisperThought.length;
+    return this._whisperThought[Math.abs(idx)];
+  }
+
+  /**
+   * Get a multi-char "whisper word" from personality
+   * For entities that want longer fragments
+   */
+  _getWhisperWord(length = 5) {
+    if (!this._whisperThought || this._whisperThought.length === 0) return null;
+
+    const startIdx = Math.floor(this._whisperCharIndex) % this._whisperThought.length;
+    let word = '';
+    for (let i = 0; i < length; i++) {
+      const idx = (startIdx + i) % this._whisperThought.length;
+      word += this._whisperThought[idx];
+    }
+    return word.trim() || null;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -687,6 +787,15 @@ export class Renderer {
   // ═══════════════════════════════════════════════════════════════════════════
 
   _getIntentionWords(intention, field, metrics) {
+    // v0.7: PERSONALITY WHISPER — shadows sometimes speak philosophical fragments
+    const emergence = metrics?.emergence || 0;
+    if (emergence > WHISPER_EMERGENCE_THRESHOLD + 0.2) {
+      const whisperWord = this._getWhisperWord(8);
+      if (whisperWord && Math.random() < 0.25) {
+        return whisperWord; // shadows whisper philosophical fragments
+      }
+    }
+
     // v0.6: Try to use REJECTED tokens from real inference first
     const inference = field.getInferenceState ? field.getInferenceState() : null;
 
