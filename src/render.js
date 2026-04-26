@@ -77,21 +77,31 @@ export class Renderer {
     // Update personality whisper (walls speak philosophical fragments)
     this._updateWhisper(metrics);
 
-    // darkness grows with pain, light pulses with emergence
-    const pain = metrics.pain;
-    const emergence = metrics.emergence;
-    const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.001 + metrics.entropy * 1.8);
-
+    // ═══════════════════════════════════════════════════════════════════════
+    // WORMHOLE COLLAPSE EFFECT
+    // "space folds when the model finds a shortcut through dissonance"
+    // ═══════════════════════════════════════════════════════════════════════
+    const isJumping = metrics.tunnelDepth > 0;
+    const collapse = isJumping ? Math.min(1, metrics.tunnelDepth * 0.2) : 0;
+    
     // Apple-style background: deep, velvet black or pure white based on state
     const skyColor = (2 + 5 * emergence - 2 * pain) | 0;
     ctx.fillStyle = `rgb(${skyColor},${skyColor},${skyColor + 2})`;
     ctx.fillRect(0, 0, w, h);
 
+    // Apply space distortion if collapsing
+    if (collapse > 0.1) {
+        ctx.save();
+        ctx.translate(w/2, h/2);
+        ctx.scale(1 - collapse * 0.8, 1 + collapse * 2);
+        ctx.translate(-w/2, -h/2);
+    }
+
     ctx.textBaseline = "middle";
     ctx.textAlign = "center";
 
     // walls + words
-    const step = 8; // larger step for cleaner look
+    const step = 8;
     for (let x = 0; x < w; x++) {
       const r = frame.rays[x];
       const dist = Math.max(0.0001, frame.zbuf[x]);
@@ -99,32 +109,37 @@ export class Renderer {
       const wallH = Math.min(h, (h / dist) * 1.10);
       const y0 = (h - wallH) / 2;
 
-      // Soft fog: Apple-style exponential decay
       const fog = Math.min(1, Math.pow(dist / 14, 2));
       const shade = (r.side ? 0.8 : 1.0) * (1 - fog);
 
-      // Minimalist palette
+      // Destiny affects wall stability
+      const destiny = field.cfg.destiny || 0.35;
+      const instability = (1.0 - destiny) * metrics.entropy * 0.5;
+
       const rr = (10 + 180 * shade * emergence - 40 * pain) | 0;
       const gg = (10 + 190 * shade * emergence - 30 * pain) | 0;
       const bb = (15 + 210 * shade * emergence + 20 * metrics.calendarDrift) | 0;
 
       if (shade > 0.01) {
+        // Walls vibrate when model is unsure (low destiny)
+        const vx = (Math.random() - 0.5) * instability * 20;
         ctx.fillStyle = `rgba(${clamp(0, 255, rr)},${clamp(0, 255, gg)},${clamp(0, 255, bb)}, ${shade * 0.4})`;
-        ctx.fillRect(x, y0, 1, wallH);
+        ctx.fillRect(x + vx, y0, 1, wallH);
       }
 
       // Word overlay with variable typography
       if (r.hit && (x % step === 0)) {
         const word = this._getWallWord(field, r.tok, r.cellX, r.cellY, x, metrics);
         
-        // Dynamic font weight simulation: closer = bolder, higher emergence = cleaner
-        const weight = emergence > 0.6 ? 300 : 500;
+        // Font weight based on emergence + distance
+        const weight = 300 + (emergence * 400);
         const size = clamp(6, 32, wallH * 0.12);
-        ctx.font = `${weight} ${size | 0}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto`;
+        ctx.font = `${weight | 0} ${size | 0}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto`;
 
-        let j = metrics.dissonance * 0.12;
-        const jx = Math.sin(x * 0.1 + performance.now() * 0.001) * j * 5;
-        const jy = Math.cos(x * 0.1 + performance.now() * 0.001) * j * 5;
+        // Jitter depends on dissonance AND instability
+        let j = metrics.dissonance * 0.12 + instability;
+        const jx = Math.sin(x * 0.1 + performance.now() * 0.001) * j * 8;
+        const jy = Math.cos(x * 0.1 + performance.now() * 0.001) * j * 8;
 
         const alpha = (0.85 - fog) * (1 - pain * 0.5);
 
@@ -134,6 +149,8 @@ export class Renderer {
         }
       }
     }
+
+    if (collapse > 0.1) ctx.restore();
 
     // entities (forms) with z-test against zbuf
     this._drawEntities(frame, p, field, metrics, entities);
