@@ -82,22 +82,16 @@ export class Renderer {
     const emergence = metrics.emergence;
     const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.001 + metrics.entropy * 1.8);
 
-    const sky = (8 + 22 * pulse - 18 * pain + 8 * emergence) | 0;
-    const floor = (6 + 16 * pulse - 22 * pain + 6 * emergence) | 0;
-
-    // sky with subtle gradient feel
-    ctx.fillStyle = `rgb(${sky},${sky + 6},${sky + 12})`;
-    ctx.fillRect(0, 0, w, h / 2);
-    
-    // floor
-    ctx.fillStyle = `rgb(${floor},${floor + 2},${floor + 4})`;
-    ctx.fillRect(0, h / 2, w, h / 2);
+    // Apple-style background: deep, velvet black or pure white based on state
+    const skyColor = (2 + 5 * emergence - 2 * pain) | 0;
+    ctx.fillStyle = `rgb(${skyColor},${skyColor},${skyColor + 2})`;
+    ctx.fillRect(0, 0, w, h);
 
     ctx.textBaseline = "middle";
     ctx.textAlign = "center";
 
     // walls + words
-    const step = 6;
+    const step = 8; // larger step for cleaner look
     for (let x = 0; x < w; x++) {
       const r = frame.rays[x];
       const dist = Math.max(0.0001, frame.zbuf[x]);
@@ -105,73 +99,39 @@ export class Renderer {
       const wallH = Math.min(h, (h / dist) * 1.10);
       const y0 = (h - wallH) / 2;
 
-      const fog = Math.min(1, dist / 12);
-      const shade = (r.side ? 0.72 : 0.95) * (1 - 0.75 * fog);
+      // Soft fog: Apple-style exponential decay
+      const fog = Math.min(1, Math.pow(dist / 14, 2));
+      const shade = (r.side ? 0.8 : 1.0) * (1 - fog);
 
-      // color modulated by metrics
-      const rr = (22 + 140 * shade + 60 * metrics.entropy - 70 * pain + 30 * emergence) | 0;
-      const gg = (18 + 120 * shade - 40 * pain + 20 * emergence) | 0;
-      const bb = (26 + 160 * shade + 55 * metrics.calendarDrift - 35 * pain + 25 * emergence) | 0;
+      // Minimalist palette
+      const rr = (10 + 180 * shade * emergence - 40 * pain) | 0;
+      const gg = (10 + 190 * shade * emergence - 30 * pain) | 0;
+      const bb = (15 + 210 * shade * emergence + 20 * metrics.calendarDrift) | 0;
 
-      ctx.fillStyle = `rgb(${clamp(0, 255, rr)},${clamp(0, 255, gg)},${clamp(0, 255, bb)})`;
-      ctx.fillRect(x, y0, 1, wallH);
+      if (shade > 0.01) {
+        ctx.fillStyle = `rgba(${clamp(0, 255, rr)},${clamp(0, 255, gg)},${clamp(0, 255, bb)}, ${shade * 0.4})`;
+        ctx.fillRect(x, y0, 1, wallH);
+      }
 
-      // word overlay (English token) — v0.6: use real inference, v0.7: personality whisper
+      // Word overlay with variable typography
       if (r.hit && (x % step === 0)) {
-        // v0.7: Get word from inference, or personality char when emergence is high
         const word = this._getWallWord(field, r.tok, r.cellX, r.cellY, x, metrics);
-        const size = clamp(8, 40, wallH * (0.11 + 0.10 * metrics.perplexity * 0.03));
-        ctx.font = `${size | 0}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace`;
+        
+        // Dynamic font weight simulation: closer = bolder, higher emergence = cleaner
+        const weight = emergence > 0.6 ? 300 : 500;
+        const size = clamp(6, 32, wallH * 0.12);
+        ctx.font = `${weight} ${size | 0}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto`;
 
-        // jitter with perplexity, dissonance, and MOOD
-        let j = metrics.perplexity * 0.04 + metrics.dissonance * 0.18;
-        j *= moodFX.jitterMult;  // mood modulates jitter (INTENSE = more, CALM = less)
+        let j = metrics.dissonance * 0.12;
+        const jx = Math.sin(x * 0.1 + performance.now() * 0.001) * j * 5;
+        const jy = Math.cos(x * 0.1 + performance.now() * 0.001) * j * 5;
 
-        // CHORDLOCK: reduce jitter at prime-anchored positions (standing waves)
-        if (field.cfg.chordlockEnabled && r.cellX !== undefined && r.cellY !== undefined) {
-          const chordRes = field.getChordlockResonance(r.cellX, r.cellY);
-          j *= (2.0 - chordRes); // chordRes is 1.0-2.0, so this reduces jitter
+        const alpha = (0.85 - fog) * (1 - pain * 0.5);
+
+        if (alpha > 0.05) {
+            ctx.fillStyle = `rgba(255,255,255,${clamp(0, 1, alpha)})`;
+            ctx.fillText(word, x + step / 2 + jx, h / 2 + jy);
         }
-
-        const jx = Math.sin(x * 0.21 + performance.now() * 0.0012) * j * 10;
-        const jy = Math.cos(x * 0.17 + performance.now() * 0.0014) * j * 10;
-
-        const alpha = 0.90 - 0.70 * fog - 0.25 * pain + 0.15 * emergence;
-
-        // ═══════════════════════════════════════════════════════════════════════
-        // GLOW EFFECT — mood-based colors from two-brain bridge
-        // ═══════════════════════════════════════════════════════════════════════
-        const baseGlow = WALL_GLOW_BASE +
-          emergence * WALL_GLOW_EMERGENCE_MULT +
-          metrics.entropy * WALL_GLOW_ENTROPY_MULT * (0.5 + 0.5 * Math.sin(performance.now() * 0.003));
-
-        // Mood-based glow: bridge routes signals → mood → color
-        let glowR = moodFX.glowColor[0];
-        let glowG = moodFX.glowColor[1];
-        let glowB = moodFX.glowColor[2];
-
-        // Rainbow mode (CREATIVE mood): cycle through hues
-        if (moodFX.rainbow) {
-          const hue = (performance.now() * 0.0005 + x * 0.01) % 1;
-          const rgb = hslToRgb(hue, 0.7, 0.6);
-          glowR = rgb[0]; glowG = rgb[1]; glowB = rgb[2];
-        }
-
-        // Pulse mode (RESONANT mood): rhythmic intensity
-        const pulseMult = moodFX.pulse
-          ? 0.7 + 0.6 * Math.sin(performance.now() * 0.004)
-          : 1.0;
-
-        const glowIntensity = baseGlow * moodFX.glowIntensity * pulseMult;
-
-        ctx.shadowBlur = glowIntensity * (1 - fog * 0.7);  // fade glow with distance
-        ctx.shadowColor = `rgba(${clamp(0,255,glowR)},${clamp(0,255,glowG)},${clamp(0,255,glowB)},${0.6 + emergence * 0.3})`;
-
-        ctx.fillStyle = `rgba(240,240,240,${clamp(0.08, 0.92, alpha)})`;
-        ctx.fillText(word, x + step / 2 + jx, h / 2 + jy);
-
-        // Reset shadow for other elements
-        ctx.shadowBlur = 0;
       }
     }
 
